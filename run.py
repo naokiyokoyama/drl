@@ -1,5 +1,3 @@
-import copy
-import glob
 import os
 import time
 from collections import deque
@@ -7,13 +5,9 @@ from collections import deque
 import gym
 import numpy as np
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
-import torch.optim as optim
 
 from a2c_ppo_acktr import algo, utils
 from a2c_ppo_acktr.arguments import get_args
-# from a2c_ppo_acktr.envs import make_vec_envs
 from a2c_ppo_acktr.vector_env import VectorEnv
 from a2c_ppo_acktr.model import Policy
 from a2c_ppo_acktr.storage import RolloutStorage
@@ -41,8 +35,8 @@ def main():
     # env_name = 'CartPole-v0'
     vec_env_args = [tuple([env_name])]*args.num_processes
     envs = VectorEnv(
-        make_env_fn = gym.make,
-        env_fn_args = tuple(vec_env_args)
+        make_env_fn=gym.make,
+        env_fn_args=tuple(vec_env_args)
     )
 
     actor_critic = Policy(
@@ -50,7 +44,6 @@ def main():
         envs.action_spaces[0],
         base_kwargs={'recurrent': args.recurrent_policy})
     actor_critic.to(device)
-
     agent = algo.PPO(
         actor_critic,
         args.clip_param,
@@ -62,6 +55,8 @@ def main():
         eps=args.eps,
         max_grad_norm=args.max_grad_norm
     )
+    # 0.2 4 32 0.5 0.01 0.0007 1e-05 0.5
+    # 0.2 2 2 0.5 0.0001 0.0003 1e-05 0.5
 
     rollouts = RolloutStorage(
         args.num_steps,
@@ -110,7 +105,7 @@ def main():
             # obs, reward, done, infos = envs.step(action)
             outputs = envs.step(action)
             obs, reward, done, infos = [list(x) for x in zip(*outputs)]
-            envs.render(mode='rgb_array')
+            # envs.render(mode='rgb_array')
             for idx, d in enumerate(done):
                 if d:
                     reward[idx] = -10.0
@@ -129,11 +124,8 @@ def main():
             # If done then clean the history of observations.
             masks = torch.FloatTensor(
                 [[0.0] if done_ else [1.0] for done_ in done])
-            bad_masks = torch.FloatTensor(
-                [[0.0] if 'bad_transition' in info.keys() else [1.0]
-                 for info in infos])
             rollouts.insert(obs, recurrent_hidden_states, action,
-                            action_log_prob, value, reward, masks, bad_masks)
+                            action_log_prob, value, reward, masks)
 
         with torch.no_grad():
             next_value = actor_critic.get_value(
@@ -141,7 +133,7 @@ def main():
                 rollouts.masks[-1]).detach()
 
         rollouts.compute_returns(next_value, args.use_gae, args.gamma,
-                                 args.gae_lambda, args.use_proper_time_limits)
+                                 args.gae_lambda)
 
         value_loss, action_loss, dist_entropy = agent.update(rollouts)
 

@@ -1,0 +1,30 @@
+SEED: 1
+CUDA: True
+RECURRENT_POLICY: False
+NUM_ENVIRONMENTS: 1
+TOTAL_NUM_STEPS: 100000000
+NUM_UPDATES: -1
+LOG_INTERVAL: 10
+
+RL:
+  PPO:
+    clip_param: 0.2
+    ppo_epoch: 32
+    num_mini_batch: 2
+    value_loss_coef: 0.5
+    entropy_coef: 0.01
+    lr: 0.0007
+    eps: 0.00001
+    max_grad_norm: 0.5
+    num_steps: 128
+    hidden_size: 512
+    use_gae: True
+    gamma: 0.99
+    tau: 0.95
+    use_linear_clip_decay: False
+    use_linear_lr_decay: False
+    reward_window_size: 50
+    goal_hidden_size: 0
+
+    use_normalized_advantage: True
+    use_double_buffered_sampler: False

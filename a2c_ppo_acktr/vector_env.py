@@ -82,7 +82,7 @@ class VectorEnv:
 
     def __init__(
         self,
-        make_env_fn = _make_env_fn,
+        make_env_fn=_make_env_fn,
         env_fn_args: Sequence[Tuple] = None,
         auto_reset_done: bool = True,
         multiprocessing_start_method: str = "forkserver",
