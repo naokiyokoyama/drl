@@ -95,6 +95,27 @@ class DiagGaussian(nn.Module):
         return FixedNormal(action_mean, action_logstd.exp())
 
 
+class DiagGaussian2(nn.Module):
+    def __init__(self, num_inputs, num_outputs):
+        super(DiagGaussian2, self).__init__()
+
+        self.mu = nn.Linear(num_inputs, num_outputs)
+        self.std = nn.Linear(num_inputs, num_outputs)
+
+        nn.init.orthogonal_(self.mu.weight, gain=0.01)
+        nn.init.constant_(self.mu.bias, 0)
+        nn.init.orthogonal_(self.std.weight, gain=0.01)
+        nn.init.constant_(self.std.bias, 0)
+
+    def forward(self, x):
+        mu = self.mu(x)
+        mu = torch.tanh(mu)
+
+        std = torch.clamp(self.std(x), min=1e-6, max=1)
+
+        return FixedNormal(mu, std)
+
+
 class Bernoulli(nn.Module):
     def __init__(self, num_inputs, num_outputs):
         super(Bernoulli, self).__init__()

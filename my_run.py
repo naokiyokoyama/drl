@@ -1,17 +1,20 @@
-import time
 from collections import deque
-
 import numpy as np
+import os
+import time
 import torch
+from yacs.config import CfgNode as CN
+import argparse
+import gym
+from torch.utils.tensorboard import SummaryWriter
 
 from a2c_ppo_acktr import algo, utils
 from a2c_ppo_acktr.vector_env import VectorEnv
 from a2c_ppo_acktr.model import Policy
 from a2c_ppo_acktr.storage import RolloutStorage
 
-from yacs.config import CfgNode as CN
-import argparse
-import gym
+from envs.knobs_env import KnobsEnv
+
 
 def main():
     parser = argparse.ArgumentParser()
@@ -28,10 +31,13 @@ def main():
 
     config = CN(new_allowed=True)
     config.merge_from_file(args.config_file)
+    if args.opts is not None:
+        config.merge_from_list(args.opts)
     config.freeze()
 
-    # run(config, env_class)
-    run(config, 'MountainCarContinuous-v0')
+    run(config, KnobsEnv)
+    # run(config, 'MountainCarContinuous-v0')
+    # run(config, 'Pendulum-v0')
 
 
 def run(config, env_class):
@@ -49,20 +55,17 @@ def run(config, env_class):
     torch.set_num_threads(1)
     device = torch.device("cuda:0" if config.CUDA else "cpu")
 
-    """ Create environment """
-    # if type(env_class) == str:
-    #     make_env_fn = gym.make
-    # else:
-    #     make_env_fn = env_class
-    # envs = VectorEnv(
-    #     make_env_fn=make_env_fn,
-    #     env_fn_args=tuple([tuple([config])] * config.NUM_ENVIRONMENTS),
-    # )
-    env_name = 'MountainCarContinuous-v0'
-    vec_env_args = [tuple([env_name])] * config.NUM_ENVIRONMENTS
+    """ Create environments """
+    if type(env_class) == str:
+        make_env_fn = gym.make
+        env_arg = env_class
+    else:
+        make_env_fn = env_class
+        env_arg = config.ENVIRONMENT
+
     envs = VectorEnv(
-        make_env_fn=gym.make,
-        env_fn_args=tuple(vec_env_args)
+        make_env_fn=make_env_fn,
+        env_fn_args=tuple([tuple([env_arg])] * config.NUM_ENVIRONMENTS),
     )
 
     """ Create policy """
@@ -102,8 +105,16 @@ def run(config, env_class):
     rollouts.to(device)
 
     episode_rewards = deque(maxlen=config.RL.PPO.reward_window_size)
+    episode_successes = deque(maxlen=config.RL.PPO.reward_window_size)
+    episode_cumul_rewards = deque(maxlen=config.RL.PPO.reward_window_size)
 
     """ Start training """
+    # Create tensorboard if path was specified
+    if config.TENSORBOARD_DIR != '':
+        print(f"Creating tensorboard at '{config.TENSORBOARD_DIR}'...")
+        if not os.path.isdir(config.TENSORBOARD_DIR):
+            os.makedirs(config.TENSORBOARD_DIR)
+        writer = SummaryWriter(config.TENSORBOARD_DIR)
 
     # Calculate number of updates
     if config.NUM_UPDATES < 0:
@@ -139,8 +150,15 @@ def run(config, env_class):
                 )
 
             # Obser reward and next obs
-            outputs = envs.step(action)
+            outputs = envs.step(action.cpu().numpy())
             obs, reward, done, infos = [list(x) for x in zip(*outputs)]
+            for info_ in infos:
+                if info_['success']:
+                    episode_successes.append(1.0)
+                    episode_cumul_rewards.append(info_['cumul_reward'])
+                if info_['failed']:
+                    episode_successes.append(0.0)
+                    episode_cumul_rewards.append(info_['cumul_reward'])
             # envs.render(mode='rgb_array')
 
             episode_rewards.extend(reward)
@@ -182,13 +200,20 @@ def run(config, env_class):
         rollouts.after_update()
 
         if j % config.LOG_INTERVAL == 0 and len(episode_rewards) > 1:
-            total_num_steps = (j + 1) * config.NUM_ENVIRONMENTS * config.TOTAL_NUM_STEPS
+            total_num_steps = (
+                (j + 1) * config.NUM_ENVIRONMENTS * config.RL.PPO.num_steps
+            )
             end = time.time()
             print(
-                "Updates {}, num timesteps {}, FPS {} \n Last {} training episodes: mean/median reward {:.1f}/{:.1f}, min/max reward {:.1f}/{:.1f}\n".format(
+                "Update {}, num timesteps {}, FPS {} \n Last {} training episodes: mean/median reward {:.1f}/{:.1f}, min/max reward {:.1f}/{:.1f}".format(
                     j,
                     total_num_steps,
-                    int(total_num_steps / (end - start)),
+                    int(
+                        config.NUM_ENVIRONMENTS
+                        * config.RL.PPO.num_steps
+                        * config.LOG_INTERVAL
+                        / (end - start)
+                    ),
                     len(episode_rewards),
                     np.mean(episode_rewards),
                     np.median(episode_rewards),
@@ -199,6 +224,33 @@ def run(config, env_class):
                     action_loss,
                 )
             )
+
+            if not episode_successes:
+                mean_success = 0
+                mean_cumul_reward = 0
+            else:
+                mean_success = np.mean(episode_successes)
+                mean_cumul_reward = np.mean(episode_cumul_rewards)
+            print(
+                'Mean success: ', mean_success,
+                'Mean cumul reward: ', mean_cumul_reward,
+                '\n'
+            )
+
+            # Update tensorboard
+            if config.TENSORBOARD_DIR != '':
+                data = {
+                    'success: ': mean_success,
+                    'cumulative_reward: ': mean_cumul_reward,
+                }
+                writer.add_scalars(
+                    'steps', data, total_num_steps
+                )
+                writer.add_scalars(
+                    'updates', data, j
+                )
+
+            start = time.time()
 
 
 if __name__ == "__main__":

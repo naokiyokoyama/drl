@@ -1,19 +1,20 @@
+TENSORBOARD_DIR: ''
 SEED: 1
 CUDA: True
 RECURRENT_POLICY: False
-NUM_ENVIRONMENTS: 1
-TOTAL_NUM_STEPS: 100000000
-NUM_UPDATES: -1
+NUM_ENVIRONMENTS: 100
+NUM_UPDATES: 10000
+TOTAL_NUM_STEPS: 1000000000
 LOG_INTERVAL: 10
 
 RL:
   PPO:
     clip_param: 0.2
-    ppo_epoch: 32
-    num_mini_batch: 2
+    ppo_epoch: 4
+    num_mini_batch: 4
     value_loss_coef: 0.5
     entropy_coef: 0.01
-    lr: 0.0007
+    lr: 0.00025
     eps: 0.00001
     max_grad_norm: 0.5
     num_steps: 128
@@ -24,7 +25,12 @@ RL:
     use_linear_clip_decay: False
     use_linear_lr_decay: False
     reward_window_size: 50
-    goal_hidden_size: 0
 
     use_normalized_advantage: True
     use_double_buffered_sampler: False
+
+ENVIRONMENT:
+  MAX_MOVEMENT: 3
+  NUM_KNOBS: 1
+  SUCCESS_THRESH: 1.0
+  MAX_STEPS: 200
