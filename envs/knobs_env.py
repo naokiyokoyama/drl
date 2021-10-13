@@ -18,7 +18,6 @@ class KnobsEnv(gym.Env):
         self.current_state = None
         self.goal_state = None
         self.num_steps = 0
-        self.error = None
         self.cumul_reward = 0
 
         # Agent has an action for each knob, i.e. how much each knob is changed by
@@ -53,31 +52,39 @@ class KnobsEnv(gym.Env):
         ) * np.pi
 
     def step(self, action):
+        # Clip actions
         action = np.clip(action, -self.max_movement, self.max_movement)
-        self.current_state = np.clip(self.current_state + action, -np.pi, np.pi)
 
-        # Get error between current and goal states
-        error = np.abs(self.goal_state - self.current_state)
-        reward = np.mean([
-            (pe - e)**2
-            for pe, e in zip(self.error, error)
-        ]) / 2.0
+        # Update current state
+        self.current_state = np.array([
+            self._validate_heading(c + a)
+            for c, a in zip(self.current_state, action)
+        ])
 
-        self.num_steps += 1
-        self.error = error
+        # Penalize MSE between current and goal states
+        reward = -np.mean([
+            (c - g)**2
+            for c, g in zip(self.current_state, self.goal_state)
+        ])
+
+        # Return observations (error for each knob)
+        observations = np.array([
+            self._get_heading_error(c, g)
+            for c, g in zip(self.current_state, self.goal_state)
+        ])
+
+        # Check termination conditions
         success = all([
             abs(c - g) < np.deg2rad(5)
             for c, g in zip(self.current_state, self.goal_state)
         ])
-
-        observations = self.goal_state - self.current_state
         if success:
             reward += 10
+        self.num_steps += 1
         done = success or self.num_steps == self.max_steps
 
         self.cumul_reward += reward
         info = {
-            'error': error,
             'reward': reward,
             'success': success,
             'failed': self.num_steps == self.max_steps,
@@ -86,9 +93,6 @@ class KnobsEnv(gym.Env):
                 'r': reward
             }
         }
-        # print(*[
-        #     np.rad2deg(i[0]) for i in (action, self.current_state, self.goal_state)
-        # ], reward)
 
         return observations, reward, done, info
 
