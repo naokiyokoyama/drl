@@ -110,7 +110,7 @@ def run(config, env_class):
 
     """ Start training """
     # Create tensorboard if path was specified
-    if config.TENSORBOARD_DIR != '':
+    if config.TENSORBOARD_DIR != "":
         print(f"Creating tensorboard at '{config.TENSORBOARD_DIR}'...")
         if not os.path.isdir(config.TENSORBOARD_DIR):
             os.makedirs(config.TENSORBOARD_DIR)
@@ -153,12 +153,12 @@ def run(config, env_class):
             outputs = envs.step(action.cpu().numpy())
             obs, reward, done, infos = [list(x) for x in zip(*outputs)]
             for info_ in infos:
-                if info_['success']:
+                if info_["success"]:
                     episode_successes.append(1.0)
-                    episode_cumul_rewards.append(info_['cumul_reward'])
-                if info_['failed']:
+                    episode_cumul_rewards.append(info_["cumul_reward"])
+                if info_["failed"]:
                     episode_successes.append(0.0)
-                    episode_cumul_rewards.append(info_['cumul_reward'])
+                    episode_cumul_rewards.append(info_["cumul_reward"])
             # envs.render(mode='rgb_array')
 
             episode_rewards.extend(reward)
@@ -232,23 +232,21 @@ def run(config, env_class):
                 mean_success = np.mean(episode_successes)
                 mean_cumul_reward = np.mean(episode_cumul_rewards)
             print(
-                'Mean success: ', mean_success,
-                'Mean cumul reward: ', mean_cumul_reward,
-                '\n'
+                "Mean success: ",
+                mean_success,
+                "Mean cumul reward: ",
+                mean_cumul_reward,
+                "\n",
             )
 
             # Update tensorboard
-            if config.TENSORBOARD_DIR != '':
+            if config.TENSORBOARD_DIR != "":
                 data = {
-                    'success: ': mean_success,
-                    'cumulative_reward: ': mean_cumul_reward,
+                    "success: ": mean_success,
+                    "cumulative_reward: ": mean_cumul_reward,
                 }
-                writer.add_scalars(
-                    'steps', data, total_num_steps
-                )
-                writer.add_scalars(
-                    'updates', data, j
-                )
+                writer.add_scalars("steps", data, total_num_steps)
+                writer.add_scalars("updates", data, j)
 
             start = time.time()
 
