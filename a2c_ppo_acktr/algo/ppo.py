@@ -92,7 +92,9 @@ class PPO:
                             values - value_preds_batch
                         ).clamp(-self.clip_param, self.clip_param)
                         value_losses = (values - return_batch).pow(2)
-                        value_losses_clipped = (value_pred_clipped - return_batch).pow(2)
+                        value_losses_clipped = (value_pred_clipped - return_batch).pow(
+                            2
+                        )
                         value_loss = (
                             0.5 * torch.max(value_losses, value_losses_clipped).mean()
                         )
