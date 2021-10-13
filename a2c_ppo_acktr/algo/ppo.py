@@ -1,6 +1,5 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 import torch.optim as optim
 
 
@@ -101,7 +100,17 @@ class PPO:
                     else:
                         value_loss = 0.5 * (return_batch - values).pow(2).mean()
                 else:
-                    raise NotImplementedError
+                    expressive_values = torch.cat(
+                        [
+                            reward_terms_batch,  # Shape = N x Rn
+                            return_batch
+                            - torch.sum(reward_terms_batch, 1).unsqueeze(
+                                1
+                            ),  # Shape = N x 1
+                        ],
+                        1,
+                    )
+                    value_loss = 0.5 * (expressive_values - reward_terms).pow(2).mean()
 
                 self.optimizer.zero_grad()
                 (
@@ -123,5 +132,6 @@ class PPO:
         value_loss_epoch /= num_updates
         action_loss_epoch /= num_updates
         dist_entropy_epoch /= num_updates
+        # print(value_loss_epoch)
 
         return value_loss_epoch, action_loss_epoch, dist_entropy_epoch

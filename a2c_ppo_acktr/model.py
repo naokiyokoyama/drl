@@ -69,7 +69,9 @@ class Policy(nn.Module):
         return value
 
     def evaluate_actions(self, inputs, rnn_hxs, masks, action):
-        v, actor_features, rnn_hxs = self.base(inputs, rnn_hxs, masks)
+        v, actor_features, rnn_hxs = self.base(
+            inputs, rnn_hxs, masks, return_value=False
+        )
         dist = self.dist(actor_features)
 
         action_log_probs = dist.log_probs(action)
@@ -211,7 +213,7 @@ class CNNBase(NNBase):
 
 
 class MLPBase(NNBase):
-    def __init__(self, num_inputs, recurrent=False, hidden_size=256, reward_terms=None):
+    def __init__(self, num_inputs, recurrent=False, hidden_size=256, reward_terms=0):
         super(MLPBase, self).__init__(recurrent, num_inputs, hidden_size)
 
         if recurrent:
@@ -239,16 +241,11 @@ class MLPBase(NNBase):
             nn.Tanh(),
         )
 
-        if reward_terms is None:
-            self.critic_linear = init_(nn.Linear(hidden_size, 1))
-        else:
-            self.critic_linear = init_(nn.Linear(hidden_size, reward_terms + 1))
-
-        self.reward_terms = reward_terms
+        self.critic_linear = init_(nn.Linear(hidden_size, reward_terms + 1))
 
         self.train()
 
-    def forward(self, inputs, rnn_hxs, masks):
+    def forward(self, inputs, rnn_hxs, masks, return_value=True):
         x = inputs
 
         if self.is_recurrent:
@@ -257,4 +254,9 @@ class MLPBase(NNBase):
         hidden_critic = self.critic(x)
         hidden_actor = self.actor(x)
 
-        return self.critic_linear(hidden_critic), hidden_actor, rnn_hxs
+        v = self.critic_linear(hidden_critic)
+
+        if return_value and v.shape[1] > 1:
+            v = torch.sum(v, 1).unsqueeze(1)
+
+        return v, hidden_actor, rnn_hxs

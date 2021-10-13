@@ -72,7 +72,10 @@ def run(config, env_class):
     actor_critic = Policy(
         envs.observation_spaces[0].shape,
         envs.action_spaces[0],
-        base_kwargs={"recurrent": config.RECURRENT_POLICY},
+        base_kwargs={
+            "recurrent": config.RECURRENT_POLICY,
+            "reward_terms": config.RL.PPO.reward_terms,
+        },
     )
     actor_critic.to(device)
 
@@ -87,6 +90,7 @@ def run(config, env_class):
         lr=config.RL.PPO.lr,
         eps=config.RL.PPO.eps,
         max_grad_norm=config.RL.PPO.max_grad_norm,
+        expressive_critic=config.RL.PPO.reward_terms > 0,
     )
 
     """ Set up rollout storage """

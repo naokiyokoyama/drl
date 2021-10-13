@@ -14,7 +14,7 @@ class RolloutStorage(object):
         obs_shape,
         action_space,
         recurrent_hidden_state_size,
-        reward_terms=0,
+        reward_terms=1,
     ):
         self.obs = torch.zeros(num_steps + 1, num_processes, *obs_shape)
         self.recurrent_hidden_states = torch.zeros(
@@ -36,7 +36,7 @@ class RolloutStorage(object):
         self.num_steps = num_steps
         self.step = 0
 
-        self.reward_terms = torch.zeros(num_steps, num_processes, reward_terms + 1)
+        self.reward_terms = torch.zeros(num_steps, num_processes, reward_terms)
 
     def to(self, device):
         self.obs = self.obs.to(device)
@@ -128,9 +128,12 @@ class RolloutStorage(object):
             return_batch = self.returns[:-1].view(-1, 1)[indices]
             masks_batch = self.masks[:-1].view(-1, 1)[indices]
             old_action_log_probs_batch = self.action_log_probs.view(-1, 1)[indices]
-            reward_terms_batch = self.reward_terms.view(-1, self.reward_terms.size(-1))[
-                indices
-            ]
+            try:
+                reward_terms_batch = self.reward_terms.view(-1, self.reward_terms.size(-1))[
+                    indices
+                ]
+            except:
+                reward_terms_batch = None
             if advantages is None:
                 adv_targ = None
             else:
