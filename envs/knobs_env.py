@@ -62,10 +62,11 @@ class KnobsEnv(gym.Env):
         ])
 
         # Penalize MSE between current and goal states
-        reward = -np.mean([
-            (c - g)**2
+        reward_terms = [
+            -(c - g)**2 / self.num_knobs
             for c, g in zip(self.current_state, self.goal_state)
-        ])
+        ]
+        reward = sum(reward_terms)
 
         # Return observations (error for each knob)
         observations = np.array([
@@ -89,6 +90,7 @@ class KnobsEnv(gym.Env):
             'success': success,
             'failed': self.num_steps == self.max_steps,
             'cumul_reward': self.cumul_reward,
+            'reward_terms': reward_terms,
             'episode': {
                 'r': reward
             }

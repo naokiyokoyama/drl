@@ -29,6 +29,8 @@ RL:
     use_normalized_advantage: True
     use_double_buffered_sampler: False
 
+    reward_terms: 0
+
 ENVIRONMENT:
   MAX_MOVEMENT: 3
   NUM_KNOBS: 1

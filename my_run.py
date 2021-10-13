@@ -96,6 +96,7 @@ def run(config, env_class):
         envs.observation_spaces[0].shape,
         envs.action_spaces[0],
         actor_critic.recurrent_hidden_state_size,
+        reward_terms=config.RL.PPO.reward_terms,
     )
 
     obs = envs.reset()
@@ -152,18 +153,28 @@ def run(config, env_class):
             # Obser reward and next obs
             outputs = envs.step(action.cpu().numpy())
             obs, reward, done, infos = [list(x) for x in zip(*outputs)]
+
+            if config.RL.PPO.reward_terms > 0:
+                reward_terms = []
+            else:
+                reward_terms = None
             for info_ in infos:
-                if info_["success"]:
+                if info_.get("success", False):
                     episode_successes.append(1.0)
                     episode_cumul_rewards.append(info_["cumul_reward"])
-                if info_["failed"]:
+                if info_.get("failed", False):
                     episode_successes.append(0.0)
                     episode_cumul_rewards.append(info_["cumul_reward"])
+                if config.RL.PPO.reward_terms > 0:
+                    reward_terms.append(info_['reward_terms'])
+
             # envs.render(mode='rgb_array')
 
             episode_rewards.extend(reward)
             obs = torch.FloatTensor(obs)
             reward = torch.FloatTensor(reward).unsqueeze(1)
+            if config.RL.PPO.reward_terms > 0:
+                reward_terms = torch.FloatTensor(reward_terms)
 
             for info in infos:
                 if "episode" in info.keys():
@@ -179,6 +190,7 @@ def run(config, env_class):
                 value,
                 reward,
                 masks,
+                reward_terms=reward_terms
             )
 
         with torch.no_grad():
