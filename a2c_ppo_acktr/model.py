@@ -61,7 +61,6 @@ class Policy(nn.Module):
             action = dist.sample()
 
         action_log_probs = dist.log_probs(action)
-        dist_entropy = dist.entropy().mean()
 
         return value, action, action_log_probs, rnn_hxs
 
@@ -70,13 +69,22 @@ class Policy(nn.Module):
         return value
 
     def evaluate_actions(self, inputs, rnn_hxs, masks, action):
-        value, actor_features, rnn_hxs = self.base(inputs, rnn_hxs, masks)
+        v, actor_features, rnn_hxs = self.base(inputs, rnn_hxs, masks)
         dist = self.dist(actor_features)
 
         action_log_probs = dist.log_probs(action)
         dist_entropy = dist.entropy().mean()
 
-        return value, action_log_probs, dist_entropy, rnn_hxs
+        if v.shape[1] == 1:
+            # Regular value
+            reward_terms = None
+            value = v
+        else:
+            # Expressive critic
+            reward_terms = v
+            value = torch.sum(v, 1).unsqueeze(1)
+
+        return value, action_log_probs, dist_entropy, rnn_hxs, reward_terms
 
 
 class NNBase(nn.Module):

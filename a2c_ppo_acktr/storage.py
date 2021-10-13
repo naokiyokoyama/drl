@@ -14,6 +14,7 @@ class RolloutStorage(object):
         obs_shape,
         action_space,
         recurrent_hidden_state_size,
+        reward_terms=0,
     ):
         self.obs = torch.zeros(num_steps + 1, num_processes, *obs_shape)
         self.recurrent_hidden_states = torch.zeros(
@@ -35,6 +36,8 @@ class RolloutStorage(object):
         self.num_steps = num_steps
         self.step = 0
 
+        self.reward_terms = torch.zeros(num_steps, num_processes, reward_terms + 1)
+
     def to(self, device):
         self.obs = self.obs.to(device)
         self.recurrent_hidden_states = self.recurrent_hidden_states.to(device)
@@ -44,6 +47,7 @@ class RolloutStorage(object):
         self.action_log_probs = self.action_log_probs.to(device)
         self.actions = self.actions.to(device)
         self.masks = self.masks.to(device)
+        self.reward_terms = self.reward_terms.to(device)
 
     def insert(
         self,
@@ -54,6 +58,7 @@ class RolloutStorage(object):
         value_preds,
         rewards,
         masks,
+        reward_terms=None,
     ):
         self.obs[self.step + 1].copy_(obs)
         self.recurrent_hidden_states[self.step + 1].copy_(recurrent_hidden_states)
@@ -62,6 +67,10 @@ class RolloutStorage(object):
         self.value_preds[self.step].copy_(value_preds)
         self.rewards[self.step].copy_(rewards)
         self.masks[self.step + 1].copy_(masks)
+        if reward_terms is None:
+            self.reward_terms[self.step].copy_(rewards)
+        else:
+            self.reward_terms[self.step].copy_(reward_terms)
 
         self.step = (self.step + 1) % self.num_steps
 
@@ -70,9 +79,7 @@ class RolloutStorage(object):
         self.recurrent_hidden_states[0].copy_(self.recurrent_hidden_states[-1])
         self.masks[0].copy_(self.masks[-1])
 
-    def compute_returns(
-        self, next_value, use_gae, gamma, gae_lambda
-    ):
+    def compute_returns(self, next_value, use_gae, gamma, gae_lambda):
         if use_gae:
             self.value_preds[-1] = next_value
             gae = 0
@@ -121,12 +128,25 @@ class RolloutStorage(object):
             return_batch = self.returns[:-1].view(-1, 1)[indices]
             masks_batch = self.masks[:-1].view(-1, 1)[indices]
             old_action_log_probs_batch = self.action_log_probs.view(-1, 1)[indices]
+            reward_terms_batch = self.reward_terms.view(-1, self.reward_terms.size(-1))[
+                indices
+            ]
             if advantages is None:
                 adv_targ = None
             else:
                 adv_targ = advantages.view(-1, 1)[indices]
 
-            yield obs_batch, recurrent_hidden_states_batch, actions_batch, value_preds_batch, return_batch, masks_batch, old_action_log_probs_batch, adv_targ
+            yield (
+                obs_batch,
+                recurrent_hidden_states_batch,
+                actions_batch,
+                value_preds_batch,
+                return_batch,
+                masks_batch,
+                old_action_log_probs_batch,
+                adv_targ,
+                reward_terms_batch,
+            )
 
     def recurrent_generator(self, advantages, num_mini_batch):
         num_processes = self.rewards.size(1)
@@ -186,4 +206,13 @@ class RolloutStorage(object):
             )
             adv_targ = _flatten_helper(T, N, adv_targ)
 
-            yield obs_batch, recurrent_hidden_states_batch, actions_batch, value_preds_batch, return_batch, masks_batch, old_action_log_probs_batch, adv_targ
+            yield (
+                obs_batch,
+                recurrent_hidden_states_batch,
+                actions_batch,
+                value_preds_batch,
+                return_batch,
+                masks_batch,
+                old_action_log_probs_batch,
+                adv_targ,
+            )

@@ -17,6 +17,7 @@ class PPO:
         eps=None,
         max_grad_norm=None,
         use_clipped_value_loss=True,
+        expressive_critic=False,
     ):
 
         self.actor_critic = actor_critic
@@ -32,6 +33,8 @@ class PPO:
         self.use_clipped_value_loss = use_clipped_value_loss
 
         self.optimizer = optim.Adam(actor_critic.parameters(), lr=lr, eps=eps)
+
+        self.expressive_critic = expressive_critic
 
     def update(self, rollouts):
         advantages = rollouts.returns[:-1] - rollouts.value_preds[:-1]
@@ -61,6 +64,7 @@ class PPO:
                     masks_batch,
                     old_action_log_probs_batch,
                     adv_targ,
+                    reward_terms_batch,
                 ) = sample
 
                 # Reshape to do in a single forward pass for all steps
@@ -69,6 +73,7 @@ class PPO:
                     action_log_probs,
                     dist_entropy,
                     _,
+                    reward_terms,
                 ) = self.actor_critic.evaluate_actions(
                     obs_batch, recurrent_hidden_states_batch, masks_batch, actions_batch
                 )
@@ -81,17 +86,20 @@ class PPO:
                 )
                 action_loss = -torch.min(surr1, surr2).mean()
 
-                if self.use_clipped_value_loss:
-                    value_pred_clipped = value_preds_batch + (
-                        values - value_preds_batch
-                    ).clamp(-self.clip_param, self.clip_param)
-                    value_losses = (values - return_batch).pow(2)
-                    value_losses_clipped = (value_pred_clipped - return_batch).pow(2)
-                    value_loss = (
-                        0.5 * torch.max(value_losses, value_losses_clipped).mean()
-                    )
+                if not self.expressive_critic:
+                    if self.use_clipped_value_loss:
+                        value_pred_clipped = value_preds_batch + (
+                            values - value_preds_batch
+                        ).clamp(-self.clip_param, self.clip_param)
+                        value_losses = (values - return_batch).pow(2)
+                        value_losses_clipped = (value_pred_clipped - return_batch).pow(2)
+                        value_loss = (
+                            0.5 * torch.max(value_losses, value_losses_clipped).mean()
+                        )
+                    else:
+                        value_loss = 0.5 * (return_batch - values).pow(2).mean()
                 else:
-                    value_loss = 0.5 * (return_batch - values).pow(2).mean()
+                    raise NotImplementedError
 
                 self.optimizer.zero_grad()
                 (
