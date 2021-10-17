@@ -58,14 +58,19 @@ def run(config, env_class):
     """ Create environments """
     if type(env_class) == str:
         make_env_fn = gym.make
-        env_arg = env_class
+        env_fn_args = tuple([tuple([env_class])] * config.NUM_ENVIRONMENTS)
     else:
         make_env_fn = env_class
-        env_arg = config.ENVIRONMENT
+        env_fn_args = tuple(
+            [
+                (config.ENVIRONMENT, config.SEED + seed)
+                for seed in range(config.NUM_ENVIRONMENTS)
+            ]
+        )
 
     envs = VectorEnv(
         make_env_fn=make_env_fn,
-        env_fn_args=tuple([tuple([env_arg])] * config.NUM_ENVIRONMENTS),
+        env_fn_args=env_fn_args,
     )
 
     """ Create policy """
@@ -154,7 +159,7 @@ def run(config, env_class):
                     rollouts.masks[step],
                 )
 
-            # Obser reward and next obs
+            # Observe reward and next obs
             outputs = envs.step(action.cpu().numpy())
             obs, reward, done, infos = [list(x) for x in zip(*outputs)]
 
@@ -170,7 +175,7 @@ def run(config, env_class):
                     episode_successes.append(0.0)
                     episode_cumul_rewards.append(info_["cumul_reward"])
                 if config.RL.PPO.reward_terms > 0:
-                    reward_terms.append(info_['reward_terms'])
+                    reward_terms.append(info_["reward_terms"])
 
             # envs.render(mode='rgb_array')
 
@@ -194,7 +199,7 @@ def run(config, env_class):
                 value,
                 reward,
                 masks,
-                reward_terms=reward_terms
+                reward_terms=reward_terms,
             )
 
         with torch.no_grad():
@@ -255,11 +260,19 @@ def run(config, env_class):
                 "\n",
             )
 
+            print(
+                f"CSV:{j},{total_num_steps},{mean_cumul_reward},{mean_success},"
+                f"{value_loss},{action_loss},{dist_entropy}"
+            )
+
             # Update tensorboard
             if config.TENSORBOARD_DIR != "":
                 data = {
-                    "success: ": mean_success,
-                    "cumulative_reward: ": mean_cumul_reward,
+                    "success": mean_success,
+                    "cumulative_reward": mean_cumul_reward,
+                    "value_loss": value_loss,
+                    "action_loss": action_loss,
+                    "dist_entropy": dist_entropy,
                 }
                 writer.add_scalars("steps", data, total_num_steps)
                 writer.add_scalars("updates", data, j)
