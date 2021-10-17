@@ -6,14 +6,17 @@ import numpy as np
 class KnobsEnv(gym.Env):
     """Agent has to move knobs to goal positions!"""
 
-    def __init__(self, config=None):
+    def __init__(self, config=None, seed=1):
         super().__init__()
         if config is None:
             config = {}
-        self.max_movement = np.deg2rad(config.get('MAX_MOVEMENT', 3))
-        self.num_knobs = config.get('NUM_KNOBS', 3)
-        self.success_thresh = config.get('SUCCESS_THRESH', 3)
-        self.max_steps = config.get('MAX_STEPS', 200)
+
+        np.random.seed(seed)
+
+        self.max_movement = np.deg2rad(config.MAX_MOVEMENT)
+        self.num_knobs = config.NUM_KNOBS
+        self.success_thresh = config.SUCCESS_THRESH
+        self.max_steps = config.MAX_STEPS
 
         self.current_state = None
         self.goal_state = None
@@ -76,7 +79,7 @@ class KnobsEnv(gym.Env):
 
         # Check termination conditions
         success = all([
-            abs(c - g) < np.deg2rad(5)
+            abs(c - g) < np.deg2rad(self.success_thresh)
             for c, g in zip(self.current_state, self.goal_state)
         ])
         if success:
