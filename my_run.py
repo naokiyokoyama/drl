@@ -96,6 +96,7 @@ def run(config, env_class):
         eps=config.RL.PPO.eps,
         max_grad_norm=config.RL.PPO.max_grad_norm,
         expressive_critic=config.RL.PPO.reward_terms > 0,
+        bad_loss=config.RL.get('bad_loss', False),
     )
 
     """ Set up rollout storage """
@@ -225,6 +226,7 @@ def run(config, env_class):
                 (j + 1) * config.NUM_ENVIRONMENTS * config.RL.PPO.num_steps
             )
             end = time.time()
+            mean_reward = np.mean(episode_rewards)
             print(
                 "Update {}, num timesteps {}, FPS {} \n Last {} training episodes: mean/median reward {:.1f}/{:.1f}, min/max reward {:.1f}/{:.1f}".format(
                     j,
@@ -236,7 +238,7 @@ def run(config, env_class):
                         / (end - start)
                     ),
                     len(episode_rewards),
-                    np.mean(episode_rewards),
+                    mean_reward,
                     np.median(episode_rewards),
                     np.min(episode_rewards),
                     np.max(episode_rewards),
@@ -261,8 +263,8 @@ def run(config, env_class):
             )
 
             print(
-                f"CSV:{j},{total_num_steps},{mean_cumul_reward},{mean_success},"
-                f"{value_loss},{action_loss},{dist_entropy}"
+                f"CSV:{j},{total_num_steps},{mean_cumul_reward},{mean_reward},"
+                f"{mean_success},{value_loss},{action_loss},{dist_entropy}"
             )
 
             # Update tensorboard
@@ -270,13 +272,13 @@ def run(config, env_class):
                 data = {
                     "success": mean_success,
                     "cumulative_reward": mean_cumul_reward,
+                    "mean_reward": mean_reward,
                     "value_loss": value_loss,
                     "action_loss": action_loss,
                     "dist_entropy": dist_entropy,
                 }
                 writer.add_scalars("steps", data, total_num_steps)
                 writer.add_scalars("updates", data, j)
-
             start = time.time()
 
 

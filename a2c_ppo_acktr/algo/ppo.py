@@ -17,6 +17,7 @@ class PPO:
         max_grad_norm=None,
         use_clipped_value_loss=True,
         expressive_critic=False,
+        bad_loss=False,
     ):
 
         self.actor_critic = actor_critic
@@ -34,6 +35,7 @@ class PPO:
         self.optimizer = optim.Adam(actor_critic.parameters(), lr=lr, eps=eps)
 
         self.expressive_critic = expressive_critic
+        self.bad_loss = bad_loss
 
     def update(self, rollouts):
         advantages = rollouts.returns[:-1] - rollouts.value_preds[:-1]
@@ -83,6 +85,7 @@ class PPO:
                     torch.clamp(ratio, 1.0 - self.clip_param, 1.0 + self.clip_param)
                     * adv_targ
                 )
+
                 action_loss = -torch.min(surr1, surr2).mean()
 
                 if not self.expressive_critic:
@@ -100,24 +103,32 @@ class PPO:
                     else:
                         value_loss = 0.5 * (return_batch - values).pow(2).mean()
                 else:
+                    return_minus_reward = return_batch - torch.sum(
+                        reward_terms_batch, 1
+                    ).unsqueeze(1)
                     expressive_values = torch.cat(
-                        [
-                            reward_terms_batch,  # Shape = N x Rn
-                            return_batch
-                            - torch.sum(reward_terms_batch, 1).unsqueeze(
-                                1
-                            ),  # Shape = N x 1
-                        ],
+                        [reward_terms_batch, return_minus_reward],
                         1,
                     )
-                    value_loss = 0.5 * (expressive_values - reward_terms).pow(2).mean()
+                    # value_loss = 0.5 * (expressive_values - reward_terms).pow(2).mean()
+                    value_loss = (
+                        0.5
+                        * (expressive_values - reward_terms).sum(1).pow(2).mean()
+                    )
 
                 self.optimizer.zero_grad()
-                (
-                    value_loss * self.value_loss_coef
-                    + action_loss
-                    - dist_entropy * self.entropy_coef
-                ).backward()
+                if self.expressive_critic and self.bad_loss:
+                    (
+                        value_loss * self.value_loss_coef / expressive_values.shape[1]
+                        + action_loss
+                        - dist_entropy * self.entropy_coef
+                    ).backward()
+                else:
+                    (
+                        value_loss * self.value_loss_coef
+                        + action_loss
+                        - dist_entropy * self.entropy_coef
+                    ).backward()
                 nn.utils.clip_grad_norm_(
                     self.actor_critic.parameters(), self.max_grad_norm
                 )

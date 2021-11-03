@@ -8,6 +8,7 @@ TOTAL_NUM_STEPS: 1000000000
 LOG_INTERVAL: 10
 
 RL:
+  bad_loss: False
   PPO:
     clip_param: 0.2
     ppo_epoch: 4
@@ -17,7 +18,7 @@ RL:
     lr: 0.0001
     eps: 0.00001
     max_grad_norm: 0.5
-    num_steps: 128
+    num_steps: 256
     hidden_size: 512
     use_gae: True
     gamma: 0.99

@@ -15,8 +15,8 @@ class KnobsEnv(gym.Env):
 
         self.max_movement = np.deg2rad(config.MAX_MOVEMENT)
         self.num_knobs = config.NUM_KNOBS
-        self.success_thresh = config.SUCCESS_THRESH
-        self.max_steps = config.MAX_STEPS
+        self.success_thresh = np.deg2rad(config.SUCCESS_THRESH)
+        self._max_episode_steps = config.MAX_STEPS
 
         self.current_state = None
         self.goal_state = None
@@ -29,7 +29,7 @@ class KnobsEnv(gym.Env):
             shape=(self.num_knobs,), dtype=np.float32
         )
 
-        # Agent is given the current angle of each knob (-180 to 180)
+        # Agent is given the current angle difference of each knob (-180 to 180)
         self.observation_space = spaces.Box(
             low=-np.pi, high=np.pi,
             shape=(self.num_knobs,), dtype=np.float32
@@ -43,10 +43,16 @@ class KnobsEnv(gym.Env):
         self.goal_state = goal_state
         self.current_state = self._get_random_knobs()
         self.num_steps = 0
-        observations = self.error = self.goal_state - self.current_state
+        observations = self.error = self.get_observations()
         self.cumul_reward = 0
 
         return observations
+
+    def get_observations(self):
+        return np.array([
+            self._get_heading_error(c, g)
+            for c, g in zip(self.current_state, self.goal_state)
+        ])
 
     def _get_random_knobs(self):
         # (0, 1) -> (0, 2) -> (-1, 1) -> (-np.pi, np.pi)
@@ -55,8 +61,8 @@ class KnobsEnv(gym.Env):
         ) * np.pi
 
     def step(self, action):
-        # Clip actions
-        action = np.clip(action, -self.max_movement, self.max_movement)
+        # Clip actions and scale
+        action = np.clip(action, -1.0, 1.0) * self.max_movement
 
         # Update current state
         self.current_state = np.array([
@@ -64,34 +70,26 @@ class KnobsEnv(gym.Env):
             for c, a in zip(self.current_state, action)
         ])
 
+        # Return observations (error for each knob)
+        observations = self.get_observations()
+
         # Penalize MSE between current and goal states
-        reward_terms = [
-            -(c - g)**2 / self.num_knobs
-            for c, g in zip(self.current_state, self.goal_state)
-        ]
+        reward_terms = -observations ** 2 / self.num_knobs
         reward = sum(reward_terms)
 
-        # Return observations (error for each knob)
-        observations = np.array([
-            self._get_heading_error(c, g)
-            for c, g in zip(self.current_state, self.goal_state)
-        ])
-
         # Check termination conditions
-        success = all([
-            abs(c - g) < np.deg2rad(self.success_thresh)
-            for c, g in zip(self.current_state, self.goal_state)
-        ])
-        if success:
-            reward += 10
+        success = all(
+            [abs(i) < self.success_thresh for i in observations]
+        )
+
         self.num_steps += 1
-        done = success or self.num_steps == self.max_steps
+        done = success or self.num_steps == self._max_episode_steps
 
         self.cumul_reward += reward
         info = {
             'reward': reward,
             'success': success,
-            'failed': self.num_steps == self.max_steps,
+            'failed': self.num_steps == self._max_episode_steps,
             'cumul_reward': self.cumul_reward,
             'reward_terms': reward_terms,
             'episode': {
