@@ -1,155 +1,285 @@
+from collections import deque
+import numpy as np
 import os
 import time
-from collections import deque
-
-import gym
-import numpy as np
 import torch
+from yacs.config import CfgNode as CN
+import argparse
+import gym
+from torch.utils.tensorboard import SummaryWriter
 
 from a2c_ppo_acktr import algo, utils
-from a2c_ppo_acktr.arguments import get_args
 from a2c_ppo_acktr.vector_env import VectorEnv
 from a2c_ppo_acktr.model import Policy
 from a2c_ppo_acktr.storage import RolloutStorage
 
+from envs.knobs_env import KnobsEnv
+
+# Habitat-specific
+from habitat_baselines.common.environments import get_env_class
+from habitat_baselines.config.default import get_config
 
 def main():
-    args = get_args()
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "config_file", type=str, help="Path to .yaml file containing parameters"
+    )
+    parser.add_argument(
+        "opts",
+        default=None,
+        nargs=argparse.REMAINDER,
+        help="Modify config options from command line",
+    )
+    args = parser.parse_args()
 
-    torch.manual_seed(args.seed)
-    torch.cuda.manual_seed_all(args.seed)
+    # Create config, overriding values with those provided through command line args
+    config = get_config(args.config_file)
+    config.merge_from_list(args.opts)
 
-    if args.cuda and torch.cuda.is_available() and args.cuda_deterministic:
+    # Assume expressive critic is not being used if not specified
+    if 'reward_terms' not in config.RL.PPO:
+        config.RL.PPO.reward_terms = 0
+    if 'loss_type' not in config.RL.PPO:
+        config.RL.loss_type = ''
+
+    config.freeze()
+
+    env_class = get_env_class(config.ENV_NAME)
+    run(config, env_class)
+
+
+def run(config, env_class):
+    """Runs RL training base on config"""
+
+    """ Set seeds """
+    torch.manual_seed(config.TASK_CONFIG.SEED)
+    torch.cuda.manual_seed_all(config.TASK_CONFIG.SEED)
+
+    """ CUDA vs. CPU """
+    if config.CUDA:
         torch.backends.cudnn.benchmark = False
         torch.backends.cudnn.deterministic = True
 
-    log_dir = os.path.expanduser(args.log_dir)
-    eval_log_dir = log_dir + "_eval"
-    utils.cleanup_log_dir(log_dir)
-    utils.cleanup_log_dir(eval_log_dir)
-
     torch.set_num_threads(1)
-    device = torch.device("cuda:0" if args.cuda else "cpu")
+    device = torch.device("cuda:0" if config.CUDA else "cpu")
 
-    env_name = 'MountainCarContinuous-v0'
-    # env_name = 'CartPole-v0'
-    vec_env_args = [tuple([env_name])]*args.num_processes
-    envs = VectorEnv(
-        make_env_fn=gym.make,
-        env_fn_args=tuple(vec_env_args)
+    """ Create environments """
+    make_env_fn = env_class
+    env_fn_args = tuple(
+        [
+            (config, config.TASK_CONFIG.SEED + seed_offset)
+            for seed_offset in range(config.NUM_ENVIRONMENTS)
+        ]
     )
 
+    envs = VectorEnv(
+        make_env_fn=make_env_fn,
+        env_fn_args=env_fn_args,
+    )
+
+    """ Create policy """
     actor_critic = Policy(
         envs.observation_spaces[0].shape,
         envs.action_spaces[0],
-        base_kwargs={'recurrent': args.recurrent_policy})
+        base_kwargs={
+            "recurrent": config.RECURRENT_POLICY,
+            "reward_terms": config.RL.PPO.reward_terms,
+            "hidden_size": config.RL.PPO.hidden_size,
+        },
+    )
     actor_critic.to(device)
+
+    """ Setup PPO """
     agent = algo.PPO(
         actor_critic,
-        args.clip_param,
-        args.ppo_epoch,
-        args.num_mini_batch,
-        args.value_loss_coef,
-        args.entropy_coef,
-        lr=args.lr,
-        eps=args.eps,
-        max_grad_norm=args.max_grad_norm
+        config.RL.PPO.clip_param,
+        config.RL.PPO.ppo_epoch,
+        config.RL.PPO.num_mini_batch,
+        config.RL.PPO.value_loss_coef,
+        config.RL.PPO.entropy_coef,
+        lr=config.RL.PPO.lr,
+        eps=config.RL.PPO.eps,
+        max_grad_norm=config.RL.PPO.max_grad_norm,
+        expressive_critic=config.RL.PPO.reward_terms > 0,
+        loss_type=config.RL.get("loss_type", ""),
     )
-    # 0.2 4 32 0.5 0.01 0.0007 1e-05 0.5
-    # 0.2 2 2 0.5 0.0001 0.0003 1e-05 0.5
 
+    """ Set up rollout storage """
     rollouts = RolloutStorage(
-        args.num_steps,
-        args.num_processes,
+        config.RL.PPO.num_steps,
+        config.NUM_ENVIRONMENTS,
         envs.observation_spaces[0].shape,
         envs.action_spaces[0],
-        actor_critic.recurrent_hidden_state_size
+        actor_critic.recurrent_hidden_state_size,
+        reward_terms=config.RL.PPO.reward_terms,
     )
 
     obs = envs.reset()
-    # obs = torch.from_numpy(obs).float()
     obs = torch.FloatTensor(obs)
 
     rollouts.obs[0].copy_(obs)
     rollouts.to(device)
 
-    episode_rewards = deque(maxlen=100)
+    episode_rewards = deque(maxlen=config.RL.PPO.reward_window_size)
+    episode_successes = deque(maxlen=config.RL.PPO.reward_window_size)
+    episode_cumul_rewards = deque(maxlen=config.RL.PPO.reward_window_size)
+
+    """ Start training """
+    # Create tensorboard if path was specified
+    if config.TENSORBOARD_DIR != "":
+        print(f"Creating tensorboard at '{config.TENSORBOARD_DIR}'...")
+        if not os.path.isdir(config.TENSORBOARD_DIR):
+            os.makedirs(config.TENSORBOARD_DIR)
+        writer = SummaryWriter(config.TENSORBOARD_DIR)
+
+    # Calculate number of updates
+    if config.NUM_UPDATES < 0:
+        num_updates = (
+            int(config.TOTAL_NUM_STEPS)
+            // config.RL.PPO.num_steps
+            // config.NUM_ENVIRONMENTS
+        )
+    else:
+        num_updates = config.NUM_UPDATES
 
     start = time.time()
-    num_updates = int(
-        args.num_env_steps) // args.num_steps // args.num_processes
     for j in range(num_updates):
 
-        if args.use_linear_lr_decay:
+        if config.RL.PPO.use_linear_lr_decay:
             # decrease learning rate linearly
             utils.update_linear_schedule(
-                agent.optimizer, j, num_updates,
-                args.lr
+                agent.optimizer, j, num_updates, config.RL.PPO.lr
             )
 
-        for step in range(args.num_steps):
+        for step in range(config.RL.PPO.num_steps):
             # Sample actions
             with torch.no_grad():
                 (
                     value,
                     action,
                     action_log_prob,
-                    recurrent_hidden_states
+                    recurrent_hidden_states,
                 ) = actor_critic.act(
                     rollouts.obs[step],
                     rollouts.recurrent_hidden_states[step],
-                    rollouts.masks[step]
+                    rollouts.masks[step],
                 )
 
-            # Obser reward and next obs
-            # obs, reward, done, infos = envs.step(action)
-            outputs = envs.step(action)
+            # Observe reward and next obs
+            outputs = envs.step(action.cpu().numpy())
             obs, reward, done, infos = [list(x) for x in zip(*outputs)]
-            # envs.render(mode='rgb_array')
-            for idx, d in enumerate(done):
-                if d:
-                    reward[idx] = -10.0
-            # print(done, reward)
+
+            if config.RL.PPO.reward_terms > 0:
+                reward_terms = []
+            else:
+                reward_terms = None
+            for info_ in infos:
+                if info_.get("success", False):
+                    episode_successes.append(1.0)
+                    episode_cumul_rewards.append(info_["cumul_reward"])
+                if info_.get("failed", False):
+                    episode_successes.append(0.0)
+                    episode_cumul_rewards.append(info_["cumul_reward"])
+                if config.RL.PPO.reward_terms > 0:
+                    reward_terms.append(info_["reward_terms"])
 
             episode_rewards.extend(reward)
-            # print('mean reward:', np.mean(episode_rewards))
             obs = torch.FloatTensor(obs)
             reward = torch.FloatTensor(reward).unsqueeze(1)
-
-
-            for info in infos:
-                if 'episode' in info.keys():
-                    episode_rewards.append(info['episode']['r'])
+            if config.RL.PPO.reward_terms > 0:
+                reward_terms = torch.FloatTensor(reward_terms)
 
             # If done then clean the history of observations.
-            masks = torch.FloatTensor(
-                [[0.0] if done_ else [1.0] for done_ in done])
-            rollouts.insert(obs, recurrent_hidden_states, action,
-                            action_log_prob, value, reward, masks)
+            masks = torch.FloatTensor([[0.0] if d else [1.0] for d in done])
+            rollouts.insert(
+                obs,
+                recurrent_hidden_states,
+                action,
+                action_log_prob,
+                value,
+                reward,
+                masks,
+                reward_terms=reward_terms,
+            )
 
         with torch.no_grad():
             next_value = actor_critic.get_value(
-                rollouts.obs[-1], rollouts.recurrent_hidden_states[-1],
-                rollouts.masks[-1]).detach()
+                rollouts.obs[-1],
+                rollouts.recurrent_hidden_states[-1],
+                rollouts.masks[-1],
+            ).detach()
 
-        rollouts.compute_returns(next_value, args.use_gae, args.gamma,
-                                 args.gae_lambda)
+        rollouts.compute_returns(
+            next_value,
+            config.RL.PPO.use_gae,
+            config.RL.PPO.gamma,
+            config.RL.PPO.tau,
+        )
 
         value_loss, action_loss, dist_entropy = agent.update(rollouts)
 
         rollouts.after_update()
 
-        if j % args.log_interval == 0 and len(episode_rewards) > 1:
-            total_num_steps = (j + 1) * args.num_processes * args.num_steps
+        if j % config.LOG_INTERVAL == 0 and len(episode_rewards) > 1:
+            total_num_steps = (
+                (j + 1) * config.NUM_ENVIRONMENTS * config.RL.PPO.num_steps
+            )
             end = time.time()
+            mean_reward = np.mean(episode_rewards)
             print(
-                "Updates {}, num timesteps {}, FPS {} \n Last {} training episodes: mean/median reward {:.1f}/{:.1f}, min/max reward {:.1f}/{:.1f}\n"
-                .format(j, total_num_steps,
-                        int(total_num_steps / (end - start)),
-                        len(episode_rewards), np.mean(episode_rewards),
-                        np.median(episode_rewards), np.min(episode_rewards),
-                        np.max(episode_rewards), dist_entropy, value_loss,
-                        action_loss))
+                "Update {}, num timesteps {}, FPS {} \n Last {} training episodes: mean/median reward {:.1f}/{:.1f}, min/max reward {:.1f}/{:.1f}".format(
+                    j,
+                    total_num_steps,
+                    int(
+                        config.NUM_ENVIRONMENTS
+                        * config.RL.PPO.num_steps
+                        * config.LOG_INTERVAL
+                        / (end - start)
+                    ),
+                    len(episode_rewards),
+                    mean_reward,
+                    np.median(episode_rewards),
+                    np.min(episode_rewards),
+                    np.max(episode_rewards),
+                    dist_entropy,
+                    value_loss,
+                    action_loss,
+                )
+            )
+
+            if not episode_successes:
+                mean_success = 0
+                mean_cumul_reward = 0
+            else:
+                mean_success = np.mean(episode_successes)
+                mean_cumul_reward = np.mean(episode_cumul_rewards)
+            print(
+                "Mean success: ",
+                mean_success,
+                "Mean cumul reward: ",
+                mean_cumul_reward,
+                "\n",
+            )
+
+            print(
+                f"CSV:{j},{total_num_steps},{mean_cumul_reward},{mean_reward},"
+                f"{mean_success},{value_loss},{action_loss},{dist_entropy}"
+            )
+
+            # Update tensorboard
+            if config.TENSORBOARD_DIR != "":
+                data = {
+                    "success": mean_success,
+                    "cumulative_reward": mean_cumul_reward,
+                    "mean_reward": mean_reward,
+                    "value_loss": value_loss,
+                    "action_loss": action_loss,
+                    "dist_entropy": dist_entropy,
+                }
+                writer.add_scalars("steps", data, total_num_steps)
+                writer.add_scalars("updates", data, j)
+            start = time.time()
+
 
 if __name__ == "__main__":
     main()
