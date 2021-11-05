@@ -93,11 +93,14 @@ class NNBase(nn.Module):
     def __init__(self, recurrent, recurrent_input_size, hidden_size):
         super(NNBase, self).__init__()
 
-        self._hidden_size = hidden_size
+        if isinstance(hidden_size, list):
+            self._hidden_size = hidden_size[-1]
+        else:
+            self._hidden_size = hidden_size
         self._recurrent = recurrent
 
         if recurrent:
-            self.gru = nn.GRU(recurrent_input_size, hidden_size)
+            self.gru = nn.GRU(recurrent_input_size, self._hidden_size)
             for name, param in self.gru.named_parameters():
                 if "bias" in name:
                     nn.init.constant_(param, 0)
@@ -223,25 +226,41 @@ class MLPBase(NNBase):
             m, nn.init.orthogonal_, lambda x: nn.init.constant_(x, 0), np.sqrt(2)
         )
 
-        self.actor = nn.Sequential(
-            init_(nn.Linear(num_inputs, hidden_size)),
-            nn.Tanh(),
-            init_(nn.Linear(hidden_size, hidden_size)),
-            nn.Tanh(),
-            init_(nn.Linear(hidden_size, hidden_size)),
-            nn.Tanh(),
-        )
+        if isinstance(hidden_size, int):
+            self.actor = nn.Sequential(
+                init_(nn.Linear(num_inputs, hidden_size)),
+                nn.Tanh(),
+                init_(nn.Linear(hidden_size, hidden_size)),
+                nn.Tanh(),
+                init_(nn.Linear(hidden_size, hidden_size)),
+                nn.Tanh(),
+            )
 
-        self.critic = nn.Sequential(
-            init_(nn.Linear(num_inputs, hidden_size)),
-            nn.Tanh(),
-            init_(nn.Linear(hidden_size, hidden_size)),
-            nn.Tanh(),
-            init_(nn.Linear(hidden_size, hidden_size)),
-            nn.Tanh(),
-        )
+            self.critic = nn.Sequential(
+                init_(nn.Linear(num_inputs, hidden_size)),
+                nn.Tanh(),
+                init_(nn.Linear(hidden_size, hidden_size)),
+                nn.Tanh(),
+                init_(nn.Linear(hidden_size, hidden_size)),
+                nn.Tanh(),
+            )
+        elif isinstance(hidden_size, list):
+            nets = []
+            for _ in range(2):
+                layers = []
+                last_size = num_inputs
+                for units in hidden_size:
+                    layers.append(init_(nn.Linear(last_size, units)))
+                    layers.append(nn.ReLU())
+                    last_size = units
+                nets.append(nn.Sequential(*layers))
 
-        self.critic_linear = init_(nn.Linear(hidden_size, reward_terms + 1))
+            self.actor, self.critic = nets
+
+        else:
+            raise RuntimeError('hidden size not understood', hidden_size)
+
+        self.critic_linear = init_(nn.Linear(self._hidden_size, reward_terms + 1))
 
         self.train()
 

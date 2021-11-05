@@ -17,6 +17,7 @@ class KnobsEnv(gym.Env):
         self.num_knobs = config.NUM_KNOBS
         self.success_thresh = np.deg2rad(config.SUCCESS_THRESH)
         self._max_episode_steps = config.MAX_STEPS
+        self.bang_bang = config.BANG_BANG
 
         self.current_state = None
         self.goal_state = None
@@ -61,8 +62,16 @@ class KnobsEnv(gym.Env):
         ) * np.pi
 
     def step(self, action):
-        # Clip actions and scale
-        action = np.clip(action, -1.0, 1.0) * self.max_movement
+        if not self.bang_bang:
+            # Clip actions and scale
+            action = np.clip(action, -1.0, 1.0) * self.max_movement
+        else:
+            # Clip actions
+            action = np.clip(action, -1.0, 1.0)
+            # Bin them to be either -1, 0, or 1
+            bins = np.array([-1.0, -1.0 / 3.0, 1.0 / 3.0, 1.0])
+            indices = np.digitize(action, bins)
+            action = np.array([-1.0, 0.0, 1.0], dtype=np.float32)[indices - 1]
 
         # Update current state
         self.current_state = np.array([

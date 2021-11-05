@@ -17,7 +17,7 @@ class PPO:
         max_grad_norm=None,
         use_clipped_value_loss=True,
         expressive_critic=False,
-        bad_loss=False,
+        loss_type="",
     ):
 
         self.actor_critic = actor_critic
@@ -35,7 +35,19 @@ class PPO:
         self.optimizer = optim.Adam(actor_critic.parameters(), lr=lr, eps=eps)
 
         self.expressive_critic = expressive_critic
-        self.bad_loss = bad_loss
+
+        # Backwards support
+        if isinstance(loss_type, bool):
+            if loss_type:
+                loss_type = ""
+            else:
+                loss_type = "regularized"
+
+        if loss_type == "normal":
+            loss_type = ""
+
+        self.loss_type = loss_type
+        self.mse_loss = torch.nn.MSELoss()
 
     def update(self, rollouts):
         advantages = rollouts.returns[:-1] - rollouts.value_preds[:-1]
@@ -110,25 +122,36 @@ class PPO:
                         [reward_terms_batch, return_minus_reward],
                         1,
                     )
-                    # value_loss = 0.5 * (expressive_values - reward_terms).pow(2).mean()
                     value_loss = (
-                        0.5
-                        * (expressive_values - reward_terms).sum(1).pow(2).mean()
+                        0.5 * (expressive_values - reward_terms).sum(1).pow(2).mean()
                     )
 
-                self.optimizer.zero_grad()
-                if self.expressive_critic and self.bad_loss:
-                    (
-                        value_loss * self.value_loss_coef / expressive_values.shape[1]
-                        + action_loss
-                        - dist_entropy * self.entropy_coef
-                    ).backward()
+                # Special types of expressive critic losses
+                if self.expressive_critic and self.loss_type != "":
+                    if self.loss_type == "regularized":
+                        critic_loss = value_loss / expressive_values.shape[1]
+                    elif self.loss_type == "mse":
+                        critic_loss = self.mse_loss(expressive_values, reward_terms)
+                    elif self.loss_type == "no_reparam":
+                        critic_loss = (
+                            0.5
+                            * (expressive_values.sum(1) - reward_terms.sum(1))
+                            .pow(2)
+                            .mean()
+                        )
+                    else:
+                        raise RuntimeError("Loss not understood: " + self.loss_type)
+
+                # If using regular critic or using normal expressive critic
                 else:
-                    (
-                        value_loss * self.value_loss_coef
-                        + action_loss
-                        - dist_entropy * self.entropy_coef
-                    ).backward()
+                    critic_loss = value_loss
+
+                self.optimizer.zero_grad()
+                (
+                    critic_loss * self.value_loss_coef
+                    + action_loss
+                    - dist_entropy * self.entropy_coef
+                ).backward()
                 nn.utils.clip_grad_norm_(
                     self.actor_critic.parameters(), self.max_grad_norm
                 )
@@ -143,6 +166,5 @@ class PPO:
         value_loss_epoch /= num_updates
         action_loss_epoch /= num_updates
         dist_entropy_epoch /= num_updates
-        # print(value_loss_epoch)
 
         return value_loss_epoch, action_loss_epoch, dist_entropy_epoch

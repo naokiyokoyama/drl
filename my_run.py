@@ -32,6 +32,14 @@ def main():
     config = CN(new_allowed=True)
     config.merge_from_file(args.config_file)
     if args.opts is not None:
+        # Backwards support for type change (bool vs str)
+        if "RL.bad_loss" in args.opts:
+            config.RL.loss_type = eval(args.opts[args.opts.index("RL.bad_loss") + 1])
+            config.RL.bad_loss = eval(args.opts[args.opts.index("RL.bad_loss") + 1])
+        if "RL.PPO.hidden_size" in args.opts:
+            config.RL.PPO.hidden_size = eval(
+                args.opts[args.opts.index("RL.PPO.hidden_size") + 1]
+            )
         config.merge_from_list(args.opts)
     config.freeze()
 
@@ -80,6 +88,7 @@ def run(config, env_class):
         base_kwargs={
             "recurrent": config.RECURRENT_POLICY,
             "reward_terms": config.RL.PPO.reward_terms,
+            "hidden_size": config.RL.PPO.hidden_size,
         },
     )
     actor_critic.to(device)
@@ -96,7 +105,7 @@ def run(config, env_class):
         eps=config.RL.PPO.eps,
         max_grad_norm=config.RL.PPO.max_grad_norm,
         expressive_critic=config.RL.PPO.reward_terms > 0,
-        bad_loss=config.RL.get('bad_loss', False),
+        loss_type=config.RL.get("loss_type", ""),
     )
 
     """ Set up rollout storage """

@@ -129,9 +129,9 @@ class RolloutStorage(object):
             masks_batch = self.masks[:-1].view(-1, 1)[indices]
             old_action_log_probs_batch = self.action_log_probs.view(-1, 1)[indices]
             try:
-                reward_terms_batch = self.reward_terms.view(-1, self.reward_terms.size(-1))[
-                    indices
-                ]
+                reward_terms_batch = self.reward_terms.view(
+                    -1, self.reward_terms.size(-1)
+                )[indices]
             except:
                 reward_terms_batch = None
             if advantages is None:

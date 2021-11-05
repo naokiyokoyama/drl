@@ -8,7 +8,7 @@ TOTAL_NUM_STEPS: 1000000000
 LOG_INTERVAL: 10
 
 RL:
-  bad_loss: False
+  loss_type: ''
   PPO:
     clip_param: 0.2
     ppo_epoch: 4
@@ -37,3 +37,4 @@ ENVIRONMENT:
   NUM_KNOBS: 1
   SUCCESS_THRESH: 1.0
   MAX_STEPS: 200
+  BANG_BANG: False
