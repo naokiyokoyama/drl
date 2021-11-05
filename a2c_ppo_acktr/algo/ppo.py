@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.optim as optim
 
 
-class PPO:
+class PPO(nn.Module):
     def __init__(
         self,
         actor_critic,
@@ -19,6 +19,7 @@ class PPO:
         expressive_critic=False,
         loss_type="",
     ):
+        super().__init__()
 
         self.actor_critic = actor_critic
 

@@ -35,13 +35,18 @@ def main():
     # Create config, overriding values with those provided through command line args
     config = get_config(args.config_file)
     config.merge_from_list(args.opts)
+    config.defrost()
 
     # Assume expressive critic is not being used if not specified
     if 'reward_terms' not in config.RL.PPO:
         config.RL.PPO.reward_terms = 0
     if 'loss_type' not in config.RL.PPO:
         config.RL.loss_type = ''
-
+    if 'CUDA' not in config:
+        config.CUDA = True
+    if 'RECURRENT_POLICY' not in config:
+        config.RECURRENT_POLICY = False
+    
     config.freeze()
 
     env_class = get_env_class(config.ENV_NAME)
@@ -143,6 +148,7 @@ def run(config, env_class):
         num_updates = config.NUM_UPDATES
 
     start = time.time()
+    ckpt_id = 0
     for j in range(num_updates):
 
         if config.RL.PPO.use_linear_lr_decay:
@@ -173,13 +179,12 @@ def run(config, env_class):
                 reward_terms = []
             else:
                 reward_terms = None
-            for info_ in infos:
+            for idx, info_ in enumerate(infos):
                 if info_.get("success", False):
                     episode_successes.append(1.0)
+                if done[idx]:
                     episode_cumul_rewards.append(info_["cumul_reward"])
-                if info_.get("failed", False):
-                    episode_successes.append(0.0)
-                    episode_cumul_rewards.append(info_["cumul_reward"])
+                    print("info_['cumul_reward']", info_["cumul_reward"])
                 if config.RL.PPO.reward_terms > 0:
                     reward_terms.append(info_["reward_terms"])
 
@@ -247,7 +252,7 @@ def run(config, env_class):
                 )
             )
 
-            if not episode_successes:
+            if not len(episode_cumul_rewards) == config.RL.PPO.reward_window_size:
                 mean_success = 0
                 mean_cumul_reward = 0
             else:
@@ -279,6 +284,18 @@ def run(config, env_class):
                 writer.add_scalars("steps", data, total_num_steps)
                 writer.add_scalars("updates", data, j)
             start = time.time()
+        
+        if j % (num_updates // config.NUM_CHECKPOINTS) == 0:
+
+            checkpoint = {
+                "state_dict": agent.state_dict(),
+                "config": config,
+            }
+
+            torch.save(
+                checkpoint, os.path.join(config.CHECKPOINT_FOLDER, f"ckpt.{ckpt_id}.pth")
+            )
+            ckpt_id +=1 
 
 
 if __name__ == "__main__":
