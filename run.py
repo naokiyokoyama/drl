@@ -1,11 +1,11 @@
-from collections import deque
+from collections import deque, defaultdict, OrderedDict
+from functools import partial
 import numpy as np
 import os
 import time
 import torch
-from yacs.config import CfgNode as CN
 import argparse
-import gym
+from gym import spaces
 from torch.utils.tensorboard import SummaryWriter
 
 from a2c_ppo_acktr import algo, utils
@@ -19,38 +19,16 @@ from envs.knobs_env import KnobsEnv
 from habitat_baselines.common.environments import get_env_class
 from habitat_baselines.config.default import get_config
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "config_file", type=str, help="Path to .yaml file containing parameters"
-    )
-    parser.add_argument(
-        "opts",
-        default=None,
-        nargs=argparse.REMAINDER,
-        help="Modify config options from command line",
-    )
-    args = parser.parse_args()
+HEADER = (
+    "updates,steps,mean_cumul_reward,mean_reward,mean_success,"
+    "value_loss,action_loss,dist_entropy\n"
+)
 
-    # Create config, overriding values with those provided through command line args
-    config = get_config(args.config_file)
-    config.merge_from_list(args.opts)
-    config.defrost()
-
-    # Assume expressive critic is not being used if not specified
-    if 'reward_terms' not in config.RL.PPO:
-        config.RL.PPO.reward_terms = 0
-    if 'loss_type' not in config.RL.PPO:
-        config.RL.loss_type = ''
-    if 'CUDA' not in config:
-        config.CUDA = True
-    if 'RECURRENT_POLICY' not in config:
-        config.RECURRENT_POLICY = False
-    
-    config.freeze()
-
-    env_class = get_env_class(config.ENV_NAME)
-    run(config, env_class)
+# We need this to set the seeds for each VectorEnv independently
+def make_env_fn(env_class, seed_offset):
+    env = env_class(config)
+    env.seed(config.TASK_CONFIG.SEED + seed_offset)
+    return env
 
 
 def run(config, env_class):
@@ -68,30 +46,40 @@ def run(config, env_class):
     torch.set_num_threads(1)
     device = torch.device("cuda:0" if config.CUDA else "cpu")
 
-    """ Create environments """
-    make_env_fn = env_class
-    env_fn_args = tuple(
-        [
-            (config, config.TASK_CONFIG.SEED + seed_offset)
-            for seed_offset in range(config.NUM_ENVIRONMENTS)
-        ]
-    )
+    """ Count reward terms for expressive critic """
+    if config.RL.PPO.loss_type in ["", "regular"]:
+        # Expressive critic not being used; don't predict reward terms
+        num_reward_terms = 0
+    else:
+        # Create a temporary env just to count reward terms
+        temp_env = env_class(config)
+        temp_env.reset()
+        _, _, _, info = temp_env.step(temp_env.action_space.sample())
+        num_reward_terms = info["reward_terms"].shape[0]
+        del temp_env
 
+    """ Create vector environments """
+    env_fn_args = tuple(
+        [(env_class, seed_offset) for seed_offset in range(config.NUM_ENVIRONMENTS)]
+    )
     envs = VectorEnv(
         make_env_fn=make_env_fn,
         env_fn_args=env_fn_args,
     )
 
-    """ Create policy """
+    """ Create actor-critic """
     actor_critic = Policy(
         envs.observation_spaces[0].shape,
         envs.action_spaces[0],
         base_kwargs={
             "recurrent": config.RECURRENT_POLICY,
-            "reward_terms": config.RL.PPO.reward_terms,
+            "reward_terms": num_reward_terms,
             "hidden_size": config.RL.PPO.hidden_size,
+            "mlp_hidden_sizes": config.RL.PPO.mlp_hidden_sizes,
         },
     )
+    print("\nActor-critic architecture:")
+    print(actor_critic)
     actor_critic.to(device)
 
     """ Setup PPO """
@@ -105,9 +93,11 @@ def run(config, env_class):
         lr=config.RL.PPO.lr,
         eps=config.RL.PPO.eps,
         max_grad_norm=config.RL.PPO.max_grad_norm,
-        expressive_critic=config.RL.PPO.reward_terms > 0,
-        loss_type=config.RL.get("loss_type", ""),
+        use_normalized_advantage=config.RL.PPO.use_normalized_advantage,
+        loss_type=config.RL.PPO.loss_type,
     )
+    if num_reward_terms > 0:
+        print("# of reward terms (using expressive critic!):", num_reward_terms)
 
     """ Set up rollout storage """
     rollouts = RolloutStorage(
@@ -116,7 +106,7 @@ def run(config, env_class):
         envs.observation_spaces[0].shape,
         envs.action_spaces[0],
         actor_critic.recurrent_hidden_state_size,
-        reward_terms=config.RL.PPO.reward_terms,
+        reward_terms=num_reward_terms,
     )
 
     obs = envs.reset()
@@ -125,9 +115,13 @@ def run(config, env_class):
     rollouts.obs[0].copy_(obs)
     rollouts.to(device)
 
-    episode_rewards = deque(maxlen=config.RL.PPO.reward_window_size)
-    episode_successes = deque(maxlen=config.RL.PPO.reward_window_size)
-    episode_cumul_rewards = deque(maxlen=config.RL.PPO.reward_window_size)
+    """ Setup metrics buffers """
+    episode_cumul_rewards = defaultdict(
+        partial(deque, maxlen=config.RL.PPO.reward_window_size)
+    )
+    episode_metrics = defaultdict(
+        partial(deque, maxlen=config.RL.PPO.reward_window_size)
+    )
 
     """ Start training """
     # Create tensorboard if path was specified
@@ -136,6 +130,18 @@ def run(config, env_class):
         if not os.path.isdir(config.TENSORBOARD_DIR):
             os.makedirs(config.TENSORBOARD_DIR)
         writer = SummaryWriter(config.TENSORBOARD_DIR)
+    else:
+        writer = None
+
+    # Create checkpoints folder if path was specified
+    checkpoint_dir = config.CHECKPOINT_FOLDER
+    if checkpoint_dir != "" and not os.path.isdir(checkpoint_dir):
+        os.makedirs(checkpoint_dir)
+
+    # Create log file
+    if config.LOG_FILE != "":
+        with open(config.LOG_FILE, "w") as f:
+            f.write(HEADER)
 
     # Calculate number of updates
     if config.NUM_UPDATES < 0:
@@ -147,16 +153,18 @@ def run(config, env_class):
     else:
         num_updates = config.NUM_UPDATES
 
+    # Train!
     start = time.time()
-    ckpt_id = 0
-    for j in range(num_updates):
+    checkpoint_id = 0
+    for update_idx in range(num_updates):
 
         if config.RL.PPO.use_linear_lr_decay:
             # decrease learning rate linearly
             utils.update_linear_schedule(
-                agent.optimizer, j, num_updates, config.RL.PPO.lr
+                agent.optimizer, update_idx, num_updates, config.RL.PPO.lr
             )
 
+        # Collect a full rollout from every VectorEnv
         for step in range(config.RL.PPO.num_steps):
             # Sample actions
             with torch.no_grad():
@@ -175,23 +183,27 @@ def run(config, env_class):
             outputs = envs.step(action.cpu().numpy())
             obs, reward, done, infos = [list(x) for x in zip(*outputs)]
 
-            if config.RL.PPO.reward_terms > 0:
+            if num_reward_terms > 0:
                 reward_terms = []
             else:
                 reward_terms = None
             for idx, info_ in enumerate(infos):
-                if info_.get("success", False):
-                    episode_successes.append(1.0)
-                if done[idx]:
-                    episode_cumul_rewards.append(info_["cumul_reward"])
-                    print("info_['cumul_reward']", info_["cumul_reward"])
-                if config.RL.PPO.reward_terms > 0:
+                # Get rewards terms for expressive critic if needed
+                if num_reward_terms > 0:
                     reward_terms.append(info_["reward_terms"])
 
-            episode_rewards.extend(reward)
+                # Get terminal metrics for ended episodes (e.g., success, cumul_reward)
+                if done[idx]:
+                    for k, v in info_.items():
+                        # Assumes keys in info with 'cumul' are about rewards
+                        if "cumul" in k:
+                            episode_cumul_rewards[k].append(v)
+                        elif type(v) in [float, int, bool]:
+                            episode_metrics[k].append(float(v))
+
             obs = torch.FloatTensor(obs)
             reward = torch.FloatTensor(reward).unsqueeze(1)
-            if config.RL.PPO.reward_terms > 0:
+            if num_reward_terms > 0:
                 reward_terms = torch.FloatTensor(reward_terms)
 
             # If done then clean the history of observations.
@@ -225,78 +237,158 @@ def run(config, env_class):
 
         rollouts.after_update()
 
-        if j % config.LOG_INTERVAL == 0 and len(episode_rewards) > 1:
+        if update_idx % config.LOG_INTERVAL == 0 and update_idx > 0:
             total_num_steps = (
-                (j + 1) * config.NUM_ENVIRONMENTS * config.RL.PPO.num_steps
+                (update_idx + 1) * config.NUM_ENVIRONMENTS * config.RL.PPO.num_steps
             )
             end = time.time()
-            mean_reward = np.mean(episode_rewards)
-            print(
-                "Update {}, num timesteps {}, FPS {} \n Last {} training episodes: mean/median reward {:.1f}/{:.1f}, min/max reward {:.1f}/{:.1f}".format(
-                    j,
-                    total_num_steps,
-                    int(
-                        config.NUM_ENVIRONMENTS
-                        * config.RL.PPO.num_steps
-                        * config.LOG_INTERVAL
-                        / (end - start)
-                    ),
-                    len(episode_rewards),
-                    mean_reward,
-                    np.median(episode_rewards),
-                    np.min(episode_rewards),
-                    np.max(episode_rewards),
-                    dist_entropy,
-                    value_loss,
-                    action_loss,
+            fps = int(
+                config.NUM_ENVIRONMENTS
+                * config.RL.PPO.num_steps
+                * config.LOG_INTERVAL
+                / (end - start)
+            )
+            rewards_data = {k: np.mean(v) for k, v in episode_cumul_rewards.items()}
+            metrics_data = {k: np.mean(v) for k, v in episode_metrics.items()}
+            losses_data = {
+                "value_loss": value_loss,
+                "action_loss": action_loss,
+                "dist_entropy": dist_entropy,
+            }
+            # Sort each dictionary alphabetically and collect into a list
+            all_data = [
+                OrderedDict(sorted(d.items(), key=lambda t: t[0]))
+                for d in [rewards_data, metrics_data, losses_data]
+            ]
+
+            # Print fps, rewards, metrics, losses
+            print("\nupdate:", update_idx, "steps:", total_num_steps, "fps:", fps)
+            for print_data in all_data:
+                if len(print_data) > 0:  # skip empty dicts
+                    print(" ".join([f"{k}: {v:.3f}" for k, v in print_data.items()]))
+
+            if config.LOG_FILE != "":
+                # Create/overwrite file with header if this is the first log iteration
+                if update_idx == config.LOG_INTERVAL:
+                    csv_header = (
+                        ",".join([",".join([k for k in d.keys()]) for d in all_data])
+                        + ",steps"
+                    )
+                    with open(config.LOG_FILE, "w") as f:
+                        f.write(csv_header + "\n")
+
+                # Append to the end of the existing file
+                csv_values = (
+                    ",".join([",".join([str(v) for v in d.values()]) for d in all_data])
+                    + f",{total_num_steps}"
                 )
-            )
-
-            if not len(episode_cumul_rewards) == config.RL.PPO.reward_window_size:
-                mean_success = 0
-                mean_cumul_reward = 0
-            else:
-                mean_success = np.mean(episode_successes)
-                mean_cumul_reward = np.mean(episode_cumul_rewards)
-            print(
-                "Mean success: ",
-                mean_success,
-                "Mean cumul reward: ",
-                mean_cumul_reward,
-                "\n",
-            )
-
-            print(
-                f"CSV:{j},{total_num_steps},{mean_cumul_reward},{mean_reward},"
-                f"{mean_success},{value_loss},{action_loss},{dist_entropy}"
-            )
+                with open(config.LOG_FILE, "a") as f:
+                    f.write(csv_values + "\n")
 
             # Update tensorboard
-            if config.TENSORBOARD_DIR != "":
-                data = {
-                    "success": mean_success,
-                    "cumulative_reward": mean_cumul_reward,
-                    "mean_reward": mean_reward,
-                    "value_loss": value_loss,
-                    "action_loss": action_loss,
-                    "dist_entropy": dist_entropy,
-                }
-                writer.add_scalars("steps", data, total_num_steps)
-                writer.add_scalars("updates", data, j)
+            if writer is not None:
+                writer.add_scalars("rewards", rewards_data, update_idx)
+                writer.add_scalars("losses", losses_data, update_idx)
+                writer.add_scalars("metrics", metrics_data, update_idx)
             start = time.time()
-        
-        if j % (num_updates // config.NUM_CHECKPOINTS) == 0:
 
+        # Save checkpoint
+        if (
+            checkpoint_dir != ""
+            and update_idx % (num_updates // config.NUM_CHECKPOINTS) == 0
+        ):
             checkpoint = {
                 "state_dict": agent.state_dict(),
                 "config": config,
             }
 
             torch.save(
-                checkpoint, os.path.join(config.CHECKPOINT_FOLDER, f"ckpt.{ckpt_id}.pth")
+                checkpoint,
+                os.path.join(checkpoint_dir, f"ckpt.{checkpoint_id}.pth"),
             )
-            ckpt_id +=1 
+            checkpoint_id += 1
+
+
+parser = argparse.ArgumentParser()
+parser.add_argument(
+    "config_file", type=str, help="Path to .yaml file containing parameters"
+)
+parser.add_argument(
+    "opts",
+    default=None,
+    nargs=argparse.REMAINDER,
+    help="Modify config options from command line",
+)
+args = parser.parse_args()
+if "JUNK" in args.opts:
+    args.opts.pop(args.opts.index("JUNK"))
+    args.opts.extend(["TENSORBOARD_DIR", "", "CHECKPOINT_FOLDER", ""])
+
+# Create config, overriding values with those provided through command line args
+config = get_config(args.config_file)
+config.merge_from_list(args.opts)
+config.defrost()
+
+# Assume expressive critic is not being used if not specified
+if "loss_type" not in config.RL.PPO:
+    config.RL.PPO.loss_type = ""
+if "CUDA" not in config:
+    config.CUDA = True
+if "RECURRENT_POLICY" not in config:
+    config.RECURRENT_POLICY = False
+
+config.freeze()
+
+
+class GymWrappedEnv(get_env_class(config.ENV_NAME)):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        """
+        We naively assume that every observation and action is 1D, and simply 
+        concatenate them together.
+        """
+        self.observation_space = spaces.Box(
+            low=np.finfo(np.float32).min,
+            high=np.finfo(np.float32).max,
+            shape=(sum([v.shape[0] for v in self.observation_space.spaces.values()]),),
+            dtype=np.float32,
+        )
+
+        self.action_space_description = {
+            k: v.shape[0] for k, v in self.action_space.spaces.items()
+        }
+        self.action_space = spaces.Box(
+            low=np.finfo(np.float32).min,
+            high=np.finfo(np.float32).max,
+            shape=(sum(list(self.action_space_description.values())),),
+            dtype=np.float32,
+        )
+        self._cumul_reward = 0
+
+    def step(self, action):
+        action_args = {}
+        action_offset = 0
+        for action_name, action_length in self.action_space_description.items():
+            action_args[action_name] = action[action_offset:action_length]
+            action_offset += action_length
+
+        # Parent env may be updating self._cumul_reward, so we save prestep value
+        cumul_reward_prestep = self._cumul_reward
+        observations, reward, done, info = super().step("null", action_args)
+
+        # Convert observation dictionary to array
+        observations = np.concatenate(list(observations.values()))
+        self._cumul_reward = cumul_reward_prestep + reward
+        info["cumul_reward"] = self._cumul_reward
+        return observations, reward, done, info
+
+    def reset(self, *args, **kwargs):
+        observations = super().reset(*args, **kwargs)
+        observations = np.concatenate(list(observations.values()))
+        self._cumul_reward = 0
+
+        return observations
 
 
 if __name__ == "__main__":
-    main()
+    run(config, GymWrappedEnv)

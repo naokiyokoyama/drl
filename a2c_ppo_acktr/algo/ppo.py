@@ -16,7 +16,7 @@ class PPO(nn.Module):
         eps=None,
         max_grad_norm=None,
         use_clipped_value_loss=True,
-        expressive_critic=False,
+        use_normalized_advantage=True,
         loss_type="",
     ):
         super().__init__()
@@ -30,29 +30,25 @@ class PPO(nn.Module):
         self.value_loss_coef = value_loss_coef
         self.entropy_coef = entropy_coef
 
+        self.use_normalized_advantage = use_normalized_advantage
         self.max_grad_norm = max_grad_norm
         self.use_clipped_value_loss = use_clipped_value_loss
 
         self.optimizer = optim.Adam(actor_critic.parameters(), lr=lr, eps=eps)
+        print('\nPPO Optimizer:')
+        print(self.optimizer)
 
-        self.expressive_critic = expressive_critic
-
-        # Backwards support
-        if isinstance(loss_type, bool):
-            if loss_type:
-                loss_type = ""
-            else:
-                loss_type = "regularized"
-
-        if loss_type == "normal":
-            loss_type = ""
+        if loss_type == "":
+            loss_type = "regular"
+        print('\nCritic loss type:', loss_type)
 
         self.loss_type = loss_type
         self.mse_loss = torch.nn.MSELoss()
 
     def update(self, rollouts):
         advantages = rollouts.returns[:-1] - rollouts.value_preds[:-1]
-        advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-5)
+        if self.use_normalized_advantage:
+            advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-5)
 
         value_loss_epoch = 0
         action_loss_epoch = 0
@@ -101,7 +97,7 @@ class PPO(nn.Module):
 
                 action_loss = -torch.min(surr1, surr2).mean()
 
-                if not self.expressive_critic:
+                if self.loss_type == "regular":
                     if self.use_clipped_value_loss:
                         value_pred_clipped = value_preds_batch + (
                             values - value_preds_batch
@@ -128,24 +124,21 @@ class PPO(nn.Module):
                     )
 
                 # Special types of expressive critic losses
-                if self.expressive_critic and self.loss_type != "":
-                    if self.loss_type == "regularized":
-                        critic_loss = value_loss / expressive_values.shape[1]
-                    elif self.loss_type == "mse":
-                        critic_loss = self.mse_loss(expressive_values, reward_terms)
-                    elif self.loss_type == "no_reparam":
-                        critic_loss = (
-                            0.5
-                            * (expressive_values.sum(1) - reward_terms.sum(1))
-                            .pow(2)
-                            .mean()
-                        )
-                    else:
-                        raise RuntimeError("Loss not understood: " + self.loss_type)
-
-                # If using regular critic or using normal expressive critic
-                else:
+                if self.loss_type == "regular":
                     critic_loss = value_loss
+                elif self.loss_type == "regularized":
+                    critic_loss = value_loss / expressive_values.shape[1]
+                elif self.loss_type == "mse":
+                    critic_loss = self.mse_loss(expressive_values, reward_terms)
+                elif self.loss_type == "no_reparam":
+                    critic_loss = (
+                        0.5
+                        * (expressive_values.sum(1) - reward_terms.sum(1))
+                        .pow(2)
+                        .mean()
+                    )
+                else:
+                    raise RuntimeError("Loss not understood: " + self.loss_type)
 
                 self.optimizer.zero_grad()
                 (

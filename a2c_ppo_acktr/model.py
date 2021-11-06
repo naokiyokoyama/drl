@@ -1,7 +1,6 @@
 import numpy as np
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 from a2c_ppo_acktr.distributions import Bernoulli, Categorical, DiagGaussian2
 from a2c_ppo_acktr.utils import init
@@ -93,10 +92,7 @@ class NNBase(nn.Module):
     def __init__(self, recurrent, recurrent_input_size, hidden_size):
         super(NNBase, self).__init__()
 
-        if isinstance(hidden_size, list):
-            self._hidden_size = hidden_size[-1]
-        else:
-            self._hidden_size = hidden_size
+        self._hidden_size = hidden_size
         self._recurrent = recurrent
 
         if recurrent:
@@ -216,7 +212,14 @@ class CNNBase(NNBase):
 
 
 class MLPBase(NNBase):
-    def __init__(self, num_inputs, recurrent=False, hidden_size=256, reward_terms=0):
+    def __init__(
+        self,
+        num_inputs,
+        mlp_hidden_sizes=(256, 256),
+        recurrent=False,
+        hidden_size=256,
+        reward_terms=0,
+    ):
         super(MLPBase, self).__init__(recurrent, num_inputs, hidden_size)
 
         if recurrent:
@@ -226,39 +229,20 @@ class MLPBase(NNBase):
             m, nn.init.orthogonal_, lambda x: nn.init.constant_(x, 0), np.sqrt(2)
         )
 
-        if isinstance(hidden_size, int):
-            self.actor = nn.Sequential(
-                init_(nn.Linear(num_inputs, hidden_size)),
-                nn.Tanh(),
-                init_(nn.Linear(hidden_size, hidden_size)),
-                nn.Tanh(),
-                init_(nn.Linear(hidden_size, hidden_size)),
-                nn.Tanh(),
-            )
+        nets = []
+        for _ in range(2):
+            layers = []
+            last_size = num_inputs
+            for units in mlp_hidden_sizes:
+                layers.append(init_(nn.Linear(last_size, units)))
+                layers.append(nn.ReLU())
+                last_size = units
+            nets.append(nn.Sequential(*layers))
 
-            self.critic = nn.Sequential(
-                init_(nn.Linear(num_inputs, hidden_size)),
-                nn.Tanh(),
-                init_(nn.Linear(hidden_size, hidden_size)),
-                nn.Tanh(),
-                init_(nn.Linear(hidden_size, hidden_size)),
-                nn.Tanh(),
-            )
-        elif isinstance(hidden_size, list):
-            nets = []
-            for _ in range(2):
-                layers = []
-                last_size = num_inputs
-                for units in hidden_size:
-                    layers.append(init_(nn.Linear(last_size, units)))
-                    layers.append(nn.ReLU())
-                    last_size = units
-                nets.append(nn.Sequential(*layers))
+        # Save the output size
+        self._hidden_size = mlp_hidden_sizes[-1]
 
-            self.actor, self.critic = nets
-
-        else:
-            raise RuntimeError('hidden size not understood', hidden_size)
+        self.actor, self.critic = nets
 
         self.critic_linear = init_(nn.Linear(self._hidden_size, reward_terms + 1))
 

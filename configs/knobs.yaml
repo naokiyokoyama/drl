@@ -4,7 +4,7 @@ CUDA: True
 RECURRENT_POLICY: False
 NUM_ENVIRONMENTS: 100
 NUM_UPDATES: 10000
-TOTAL_NUM_STEPS: 1000000000
+TOTAL_NUM_STEPS: -1.0
 LOG_INTERVAL: 10
 
 RL:
@@ -29,8 +29,6 @@ RL:
 
     use_normalized_advantage: True
     use_double_buffered_sampler: False
-
-    reward_terms: 0
 
 ENVIRONMENT:
   MAX_MOVEMENT: 3
