@@ -85,7 +85,9 @@ class Policy(nn.Module):
             reward_terms = v
             value = torch.sum(v, 1).unsqueeze(1)
 
-        return value, action_log_probs, dist_entropy, rnn_hxs, reward_terms
+        new_action = dist.mode()
+
+        return value, action_log_probs, dist_entropy, rnn_hxs, reward_terms, new_action
 
 
 class NNBase(nn.Module):

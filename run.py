@@ -90,6 +90,7 @@ def run(config, env_class):
         config.RL.PPO.num_mini_batch,
         config.RL.PPO.value_loss_coef,
         config.RL.PPO.entropy_coef,
+        config.RL.PPO.get('expressive_action_loss_coef', 0.0),
         lr=config.RL.PPO.lr,
         eps=config.RL.PPO.eps,
         max_grad_norm=config.RL.PPO.max_grad_norm,
@@ -233,7 +234,7 @@ def run(config, env_class):
             config.RL.PPO.tau,
         )
 
-        value_loss, action_loss, dist_entropy = agent.update(rollouts)
+        losses_data = agent.update(rollouts)
 
         rollouts.after_update()
 
@@ -250,11 +251,6 @@ def run(config, env_class):
             )
             rewards_data = {k: np.mean(v) for k, v in episode_cumul_rewards.items()}
             metrics_data = {k: np.mean(v) for k, v in episode_metrics.items()}
-            losses_data = {
-                "value_loss": value_loss,
-                "action_loss": action_loss,
-                "dist_entropy": dist_entropy,
-            }
             # Sort each dictionary alphabetically and collect into a list
             all_data = [
                 OrderedDict(sorted(d.items(), key=lambda t: t[0]))
@@ -322,7 +318,7 @@ parser.add_argument(
 args = parser.parse_args()
 if "JUNK" in args.opts:
     args.opts.pop(args.opts.index("JUNK"))
-    args.opts.extend(["TENSORBOARD_DIR", "", "CHECKPOINT_FOLDER", ""])
+    args.opts.extend(["TENSORBOARD_DIR", "", "CHECKPOINT_FOLDER", "", "LOG_FILE", ""])
 
 # Create config, overriding values with those provided through command line args
 config = get_config(args.config_file)
