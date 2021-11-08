@@ -25,13 +25,13 @@ HEADER = (
 )
 
 # We need this to set the seeds for each VectorEnv independently
-def make_env_fn(env_class, seed_offset):
-    env = env_class(config)
+def make_env_fn(config, seed_offset):
+    env = GymWrappedEnv(config)
     env.seed(config.TASK_CONFIG.SEED + seed_offset)
     return env
 
 
-def run(config, env_class):
+def run(config):
     """Runs RL training base on config"""
 
     """ Set seeds """
@@ -52,15 +52,20 @@ def run(config, env_class):
         num_reward_terms = 0
     else:
         # Create a temporary env just to count reward terms
-        temp_env = env_class(config)
+        temp_env = GymWrappedEnv(config)
         temp_env.reset()
         _, _, _, info = temp_env.step(temp_env.action_space.sample())
+        if "reward_terms" not in info:
+            raise RuntimeError(
+                "Attempted to use expressive critic,"
+                "but env does not return reward terms."
+            )
         num_reward_terms = info["reward_terms"].shape[0]
         del temp_env
 
     """ Create vector environments """
     env_fn_args = tuple(
-        [(env_class, seed_offset) for seed_offset in range(config.NUM_ENVIRONMENTS)]
+        [(config, seed_offset) for seed_offset in range(config.NUM_ENVIRONMENTS)]
     )
     envs = VectorEnv(
         make_env_fn=make_env_fn,
@@ -90,7 +95,7 @@ def run(config, env_class):
         config.RL.PPO.num_mini_batch,
         config.RL.PPO.value_loss_coef,
         config.RL.PPO.entropy_coef,
-        config.RL.PPO.get('expressive_action_loss_coef', 0.0),
+        config.RL.PPO.get("expressive_action_loss_coef", 0.0),
         lr=config.RL.PPO.lr,
         eps=config.RL.PPO.eps,
         max_grad_norm=config.RL.PPO.max_grad_norm,
@@ -305,53 +310,61 @@ def run(config, env_class):
             checkpoint_id += 1
 
 
-parser = argparse.ArgumentParser()
-parser.add_argument(
-    "config_file", type=str, help="Path to .yaml file containing parameters"
-)
-parser.add_argument(
-    "opts",
-    default=None,
-    nargs=argparse.REMAINDER,
-    help="Modify config options from command line",
-)
-args = parser.parse_args()
-if "JUNK" in args.opts:
-    args.opts.pop(args.opts.index("JUNK"))
-    args.opts.extend(["TENSORBOARD_DIR", "", "CHECKPOINT_FOLDER", "", "LOG_FILE", ""])
+def make_config_from_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "config_file", type=str, help="Path to .yaml file containing parameters"
+    )
+    parser.add_argument(
+        "opts",
+        default=None,
+        nargs=argparse.REMAINDER,
+        help="Modify config options from command line",
+    )
+    args = parser.parse_args()
+    if "JUNK" in args.opts:
+        args.opts.pop(args.opts.index("JUNK"))
+        args.opts.extend(
+            ["TENSORBOARD_DIR", "", "CHECKPOINT_FOLDER", "", "LOG_FILE", ""]
+        )
 
-# Create config, overriding values with those provided through command line args
-config = get_config(args.config_file)
-config.merge_from_list(args.opts)
-config.defrost()
+    # Create config, overriding values with those provided through command line args
+    config = get_config(args.config_file)
+    config.merge_from_list(args.opts)
+    config.defrost()
 
-# Assume expressive critic is not being used if not specified
-if "loss_type" not in config.RL.PPO:
-    config.RL.PPO.loss_type = ""
-if "CUDA" not in config:
-    config.CUDA = True
-if "RECURRENT_POLICY" not in config:
-    config.RECURRENT_POLICY = False
+    # Assume expressive critic is not being used if not specified
+    if "loss_type" not in config.RL.PPO:
+        config.RL.PPO.loss_type = ""
+    if "CUDA" not in config:
+        config.CUDA = True
+    if "RECURRENT_POLICY" not in config:
+        config.RECURRENT_POLICY = False
 
-config.freeze()
+    config.freeze()
+
+    return config
 
 
-class GymWrappedEnv(get_env_class(config.ENV_NAME)):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+class GymWrappedEnv:
+    def __init__(self, config, *args, **kwargs):
+        env_class = get_env_class(config.ENV_NAME)
+        self.wrapped_env = env_class(config, *args, **kwargs)
         """
         We naively assume that every observation and action is 1D, and simply 
         concatenate them together.
         """
+        orig_observation_space = self.wrapped_env.observation_space.spaces
+        orig_action_space = self.wrapped_env.action_space.spaces
         self.observation_space = spaces.Box(
             low=np.finfo(np.float32).min,
             high=np.finfo(np.float32).max,
-            shape=(sum([v.shape[0] for v in self.observation_space.spaces.values()]),),
+            shape=(sum([v.shape[0] for v in orig_observation_space.values()]),),
             dtype=np.float32,
         )
 
         self.action_space_description = {
-            k: v.shape[0] for k, v in self.action_space.spaces.items()
+            k: v.shape[0] for k, v in orig_action_space.items()
         }
         self.action_space = spaces.Box(
             low=np.finfo(np.float32).min,
@@ -361,30 +374,35 @@ class GymWrappedEnv(get_env_class(config.ENV_NAME)):
         )
         self._cumul_reward = 0
 
-    def step(self, action):
+    def step(self, action, *args, **kwargs):
         action_args = {}
         action_offset = 0
         for action_name, action_length in self.action_space_description.items():
             action_args[action_name] = action[action_offset:action_length]
             action_offset += action_length
 
-        # Parent env may be updating self._cumul_reward, so we save prestep value
-        cumul_reward_prestep = self._cumul_reward
-        observations, reward, done, info = super().step("null", action_args)
+        observations, reward, done, info = self.wrapped_env.step(
+            "null", action_args, *args, **kwargs
+        )
 
         # Convert observation dictionary to array
         observations = np.concatenate(list(observations.values()))
-        self._cumul_reward = cumul_reward_prestep + reward
+        self._cumul_reward += reward
         info["cumul_reward"] = self._cumul_reward
+
         return observations, reward, done, info
 
     def reset(self, *args, **kwargs):
-        observations = super().reset(*args, **kwargs)
+        observations = self.wrapped_env.reset(*args, **kwargs)
         observations = np.concatenate(list(observations.values()))
         self._cumul_reward = 0
 
         return observations
 
+    def seed(self, seed):
+        self.wrapped_env.seed(seed)
+
 
 if __name__ == "__main__":
-    run(config, GymWrappedEnv)
+    config = make_config_from_args()
+    run(config)
