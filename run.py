@@ -263,7 +263,16 @@ def run(config):
             ]
 
             # Print fps, rewards, metrics, losses
-            print("\nupdate:", update_idx, "steps:", total_num_steps, "fps:", fps)
+            print(
+                "\nupdate:",
+                update_idx,
+                "steps:",
+                total_num_steps,
+                "fps:",
+                fps,
+                "sec_per_update:",
+                f"{end - start:.2f}",
+            )
             for print_data in all_data:
                 if len(print_data) > 0:  # skip empty dicts
                     print(" ".join([f"{k}: {v:.3f}" for k, v in print_data.items()]))

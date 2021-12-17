@@ -47,6 +47,8 @@ class PPO(nn.Module):
         elif loss_type == "q_mse":
             loss_type = "mse"
             use_q = "q"
+        elif loss_type == "r_mse":
+            loss_type = "mse"
         print("\nCritic loss type:", loss_type)
 
         self.loss_type = loss_type
