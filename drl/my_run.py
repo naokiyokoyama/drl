@@ -8,12 +8,12 @@ import argparse
 import gym
 from torch.utils.tensorboard import SummaryWriter
 
-from a2c_ppo_acktr import algo, utils
-from a2c_ppo_acktr.vector_env import VectorEnv
-from a2c_ppo_acktr.model import Policy
-from a2c_ppo_acktr.storage import RolloutStorage
+from drl.a2c_ppo_acktr import utils, algo
+from drl.a2c_ppo_acktr.vector_env import VectorEnv
+from drl.a2c_ppo_acktr.model import Policy
+from drl.a2c_ppo_acktr.storage import RolloutStorage
 
-from envs.knobs_env import KnobsEnv
+from drl.envs.knobs_env import KnobsEnv
 
 
 def main():

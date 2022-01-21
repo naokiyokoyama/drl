@@ -1,5 +1,5 @@
 from run import GymWrappedEnv
-from a2c_ppo_acktr.model import Policy
+from drl.a2c_ppo_acktr.model import Policy
 
 import argparse
 import torch
