@@ -265,7 +265,7 @@ def run(config):
                 "fps:",
                 fps,
                 "sec_per_update:",
-                f"{end - start:.2f}",
+                f"{(end - start) / config.LOG_INTERVAL:.2f}",
             )
             for print_data in all_data:
                 if len(print_data) > 0:  # skip empty dicts
