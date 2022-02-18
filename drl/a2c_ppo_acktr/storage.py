@@ -107,12 +107,10 @@ class RolloutStorage(object):
 
         if mini_batch_size is None:
             assert batch_size >= num_mini_batch, (
-                "PPO requires the number of processes ({}) "
-                "* number of steps ({}) = {} "
-                "to be greater than or equal to the number of PPO mini batches ({})."
-                "".format(
-                    num_processes, num_steps, num_processes * num_steps, num_mini_batch
-                )
+                f"PPO requires the number of processes ({num_processes}) "
+                f"* number of steps ({num_steps}) = {num_processes * num_steps} "
+                "to be greater than or equal to the number"
+                f"of PPO mini batches ({num_mini_batch})."
             )
             mini_batch_size = batch_size // num_mini_batch
         sampler = BatchSampler(
