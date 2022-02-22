@@ -32,7 +32,7 @@ if __name__ == "__main__":
         ),
         robot_class=aliengo.Aliengo,
         is_render=True,
-        on_rack=True,
+        on_rack=False,
     )
 
 
@@ -53,7 +53,7 @@ if __name__ == "__main__":
     )
     print("\nActor-critic architecture:")
     print(actor_critic)
-    device = torch.device("cuda:0" if config.CUDA else "cpu")
+    device = torch.device("cpu")
     actor_critic.to(device)
 
     """ Load weights """
