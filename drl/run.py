@@ -108,7 +108,7 @@ def run(config):
     print("Setting up rollout storage...")
     total_num_envs = config.NUM_ENVIRONMENTS
     if config.VECTOR_OF_VECTOR_ENVS:
-        total_num_envs *= config.NUM_ENVIRONMENTS
+        total_num_envs *= config.NUM_SUB_ENVIRONMENTS
     rollouts = RolloutStorage(
         config.RL.PPO.num_steps,
         total_num_envs,
