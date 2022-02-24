@@ -6,6 +6,7 @@ from functools import partial
 
 import numpy as np
 import torch
+import tqdm
 from gym import spaces
 
 # Habitat-specific
@@ -23,11 +24,16 @@ HEADER = (
     "value_loss,action_loss,dist_entropy\n"
 )
 
+
 # We need this to set the seeds for each VectorEnv independently
 def make_env_fn(config, seed_offset):
     env = GymWrappedEnv(config)
     env.seed(config.TASK_CONFIG.SEED + seed_offset)
     return env
+
+
+def is_vector_env(env):
+    return hasattr(env, "is_vector_env") and env.is_vector_env
 
 
 def run(config):
@@ -42,7 +48,12 @@ def run(config):
     device = torch.device("cuda:0" if config.CUDA else "cpu")
 
     """ Get obs space and count reward terms for expressive critic w/ a temp env"""
-    temp_env = GymWrappedEnv(config)
+    tmp_config = config.clone()
+    tmp_config.defrost()
+    tmp_config.NUM_ENVIRONMENTS = 1
+    tmp_config.freeze()
+    temp_env = GymWrappedEnv(tmp_config)
+    is_vector_env_ = is_vector_env(temp_env.wrapped_env)
     temp_env.reset()
     obs_space = temp_env.observation_space
     action_space = temp_env.action_space
@@ -57,7 +68,7 @@ def run(config):
                 "Attempted to use expressive critic,"
                 "but env does not return reward terms."
             )
-        num_reward_terms = info["reward_terms"].shape[0]
+        num_reward_terms = info["reward_terms"].shape[-1]
     del temp_env
 
     """ Create actor-critic """
@@ -93,24 +104,36 @@ def run(config):
     if num_reward_terms > 0:
         print("# of reward terms (using expressive critic!):", num_reward_terms)
 
-    """ Create vector environments """
-    env_fn_args = tuple(
-        [(config, seed_offset) for seed_offset in range(config.NUM_ENVIRONMENTS)]
-    )
-    envs = VectorEnv(make_env_fn=make_env_fn, env_fn_args=env_fn_args)
-
     """ Set up rollout storage """
+    print("Setting up rollout storage...")
+    total_num_envs = config.NUM_ENVIRONMENTS
+    if config.VECTOR_OF_VECTOR_ENVS:
+        total_num_envs *= config.NUM_ENVIRONMENTS
     rollouts = RolloutStorage(
         config.RL.PPO.num_steps,
-        config.NUM_ENVIRONMENTS,
-        envs.observation_spaces[0].shape,
-        envs.action_spaces[0],
+        total_num_envs,
+        obs_space.shape,
+        action_space,
         actor_critic.recurrent_hidden_state_size,
         reward_terms=num_reward_terms,
     )
 
+    """ Create vector environments """
+    print("Setting up vector environments...")
+    if is_vector_env_ and not config.VECTOR_OF_VECTOR_ENVS:
+        envs = make_env_fn(config, 0)
+    else:
+        env_fn_args = tuple(
+            [(config, seed_offset) for seed_offset in range(config.NUM_ENVIRONMENTS)]
+        )
+        envs = VectorEnv(
+            make_env_fn=make_env_fn,
+            env_fn_args=env_fn_args,
+            auto_reset_done=not config.VECTOR_OF_VECTOR_ENVS,
+        )
+
     obs = envs.reset()
-    obs = torch.FloatTensor(np.array(obs))
+    obs = torch.FloatTensor(np.array(obs)).reshape(total_num_envs, -1)
 
     rollouts.obs[0].copy_(obs)
     rollouts.to(device)
@@ -165,7 +188,7 @@ def run(config):
             )
 
         # Collect a full rollout from every VectorEnv
-        for step in range(config.RL.PPO.num_steps):
+        for step in tqdm.trange(config.RL.PPO.num_steps):
             # Sample actions
             with torch.no_grad():
                 (
@@ -180,33 +203,26 @@ def run(config):
                 )
 
             # Observe reward and next obs
-            outputs = envs.step(action.cpu().numpy())
-            obs, reward, done, infos = [list(x) for x in zip(*outputs)]
-
-            if num_reward_terms > 0:
-                reward_terms = []
-            else:
-                reward_terms = None
-            for idx, info_ in enumerate(infos):
-                # Get rewards terms for expressive critic if needed
+            step_action = action.cpu().numpy()
+            outputs = envs.step(step_action)
+            reward_terms = None
+            if is_vector_env_ and not config.VECTOR_OF_VECTOR_ENVS:
+                obs, reward, done, infos = outputs
                 if num_reward_terms > 0:
-                    reward_terms.append(info_["reward_terms"])
-
-                # Get terminal metrics for ended episodes (e.g., success, cumul_reward)
-                if done[idx]:
-                    for k, v in info_.items():
-                        # Assumes keys in info with 'cumul' are about rewards
-                        if "cumul" in k:
-                            episode_cumul_rewards[k].append(v)
-                        elif type(v) in [float, int, bool]:
-                            episode_metrics[k].append(float(v))
-
-            obs = torch.FloatTensor(np.array(obs))
-            reward = torch.FloatTensor(np.array(reward)).unsqueeze(1)
-            if num_reward_terms > 0:
-                reward_terms = torch.FloatTensor(reward_terms)
-
-            # If done then clean the history of observations.
+                    reward_terms = torch.FloatTensor(infos["reward_terms"])
+            else:
+                obs, reward, done, infos = [list(x) for x in zip(*outputs)]
+                # Make sure obs and reward are not lists but are np arrays
+                obs = np.array(obs, dtype=np.float32).reshape(total_num_envs, -1)
+                reward = np.array(reward, dtype=np.float32).reshape(total_num_envs)
+                done = np.array(done, dtype=np.bool).reshape(total_num_envs)
+                if num_reward_terms > 0:
+                    reward_terms = np.array(
+                        [info_["reward_terms"] for info_ in infos], dtype=np.float32
+                    ).reshape(total_num_envs, -1)
+                    reward_terms = torch.FloatTensor(reward_terms)
+            obs = torch.FloatTensor(obs)
+            reward = torch.FloatTensor(reward).unsqueeze(1)
             masks = torch.FloatTensor([[0.0] if d else [1.0] for d in done])
             rollouts.insert(
                 obs,
@@ -218,6 +234,46 @@ def run(config):
                 masks,
                 reward_terms=reward_terms,
             )
+
+            # Record stats for episodes that have just ended
+            if is_vector_env_ and not config.VECTOR_OF_VECTOR_ENVS:
+                for k, v in infos.items():
+                    for idx, d in enumerate(done):
+                        if d == 1.0:
+                            # Assumes keys in info with 'cumul' are about rewards
+                            if "cumul" in k:
+                                episode_cumul_rewards[k].append(v[idx])
+                            elif type(v) in [float, int, bool]:
+                                episode_metrics[k].append(float(v[idx]))
+            else:
+                if config.VECTOR_OF_VECTOR_ENVS:
+                    info_idx = 0
+                    inner_vec_idx = 0
+                    num_inner_vecs = total_num_envs // config.NUM_ENVIRONMENTS
+                    for done_ in done:
+                        if done_:
+                            info_ = infos[info_idx]
+                            for k, v in info_.items():
+                                # Assume keys in info with 'cumul' are about rewards
+                                if "cumul" in k:
+                                    episode_cumul_rewards[k].append(v[inner_vec_idx])
+                                elif type(v) in [float, int, bool]:
+                                    episode_metrics[k].append(float(v[inner_vec_idx]))
+
+                        inner_vec_idx += 1
+                        if inner_vec_idx == num_inner_vecs:
+                            inner_vec_idx = 0
+                            info_idx += 1
+
+                else:
+                    for idx, info_ in enumerate(infos):
+                        if done[idx]:
+                            for k, v in info_.items():
+                                # Assume keys in info with 'cumul' are about rewards
+                                if "cumul" in k:
+                                    episode_cumul_rewards[k].append(v)
+                                elif type(v) in [float, int, bool]:
+                                    episode_metrics[k].append(float(v))
 
         with torch.no_grad():
             next_value = actor_critic.get_value(
@@ -238,12 +294,12 @@ def run(config):
         rollouts.after_update()
 
         if update_idx % config.LOG_INTERVAL == 0 and update_idx > 0:
+            end = time.time()
             total_num_steps = (
                 (update_idx + 1) * config.NUM_ENVIRONMENTS * config.RL.PPO.num_steps
             )
-            end = time.time()
             fps = int(
-                config.NUM_ENVIRONMENTS
+                total_num_envs
                 * config.RL.PPO.num_steps
                 * config.LOG_INTERVAL
                 / (end - start)
@@ -375,13 +431,13 @@ class GymWrappedEnv:
             shape=(sum(list(self.action_space_description.values())),),
             dtype=np.float32,
         )
-        self._cumul_reward = 0
+        self.is_vector_env = is_vector_env(self.wrapped_env)
 
     def step(self, action, *args, **kwargs):
         action_args = {}
         action_offset = 0
         for action_name, action_length in self.action_space_description.items():
-            action_args[action_name] = action[action_offset:action_length]
+            action_args[action_name] = action[..., action_offset:action_length]
             action_offset += action_length
 
         observations, reward, done, info = self.wrapped_env.step(
@@ -389,17 +445,20 @@ class GymWrappedEnv:
         )
 
         # Convert observation dictionary to array
-        observations = np.concatenate(list(observations.values()))
-        self._cumul_reward += reward
-        info["cumul_reward"] = self._cumul_reward
+        observations = self.reformat_observations(observations)
 
         return observations, reward, done, info
 
     def reset(self, *args, **kwargs):
         observations = self.wrapped_env.reset(*args, **kwargs)
-        observations = np.concatenate(list(observations.values()))
-        self._cumul_reward = 0
+        observations = self.reformat_observations(observations)
 
+        return observations
+
+    def reformat_observations(self, observations):
+        obs_values = [observations[k] for k in sorted(observations.keys())]
+        axis = 1 if self.is_vector_env else 0
+        observations = np.concatenate(obs_values, axis=axis)
         return observations
 
     def seed(self, seed):
