@@ -221,15 +221,19 @@ class MLPBase(NNBase):
         recurrent=False,
         hidden_size=256,
         reward_terms=0,
+        init_weights=True,
     ):
         super(MLPBase, self).__init__(recurrent, num_inputs, hidden_size)
 
         if recurrent:
             num_inputs = hidden_size
 
-        init_ = lambda m: init(
-            m, nn.init.orthogonal_, lambda x: nn.init.constant_(x, 0), np.sqrt(2)
-        )
+        if init_weights:
+            init_ = lambda m: init(
+                m, nn.init.orthogonal_, lambda x: nn.init.constant_(x, 0), np.sqrt(2)
+            )
+        else:
+            init_ = lambda m: m
 
         nets = []
         for _ in range(2):

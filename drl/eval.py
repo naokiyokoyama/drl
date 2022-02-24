@@ -37,6 +37,7 @@ if __name__ == "__main__":
             "reward_terms": num_reward_terms,
             "hidden_size": config.RL.PPO.hidden_size,
             "mlp_hidden_sizes": config.RL.PPO.mlp_hidden_sizes,
+            "init_weights": False,
         },
     )
     print("\nActor-critic architecture:")
