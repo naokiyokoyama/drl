@@ -33,8 +33,8 @@ if __name__ == "__main__":
             gym_config=locomotion_gym_config.LocomotionGymConfig(
                 simulation_parameters=sim_params
             ),
-            robot_class=aliengo.Aliengo,
-            is_render=True,
+            robot_class=aliengo_robot.AliengoRobot,
+            is_render=False,
             on_rack=False,
         )
     elif environment == "walk":
@@ -42,8 +42,8 @@ if __name__ == "__main__":
             gym_config=locomotion_gym_config.LocomotionGymConfig(
                 simulation_parameters=sim_params
             ),
-            robot_class=aliengo.Aliengo,
-            is_render=True,
+            robot_class=aliengo_robot.AliengoRobot,
+            is_render=False,
             on_rack=False,
         )
 
