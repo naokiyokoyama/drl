@@ -1,11 +1,11 @@
 from locomotion.envs import walking_locomotion, locomotion_gym_config
 from locomotion.robots import aliengo, aliengo_robot
-from .policy_loader import make_flat_terrian_policy
+from .policy_loader import FlatTerrainPolicy
 
 import argparse
 import torch
 
-# sim_params = locomotion_gym_config.SimulationParameters()
+sim_params = locomotion_gym_config.SimulationParameters()
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -31,8 +31,8 @@ if __name__ == "__main__":
         on_rack=False,
     )
 
-    """ Load weights """
-    actor_critic = make_flat_terrian_policy(checkpoint)
+    """ create actor critic and load weights """
+    actor_critic = FlatTerrainPolicy(checkpoint)
 
     """ Execute episodes """
     num_episodes = 1
@@ -49,10 +49,8 @@ if __name__ == "__main__":
         step_count = 0
         while not_done[0]:
             step_count += 1
-            (_, action, _, recurrent_hidden_states,) = actor_critic.act(
+            action = actor_critic.act(
                 torch.FloatTensor(observations).unsqueeze(0).to("cpu"),
-                recurrent_hidden_states,
-                not_done,
                 deterministic=True,
             )
 
