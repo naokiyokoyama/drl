@@ -1,0 +1,41 @@
+RUNNER:
+  name: "PPORunner"
+ENVS_NAME: ""
+NUM_ENVIRONMENTS: 16
+CUDA: True
+ACTOR_CRITIC:
+  name: "ActorCritic"
+  net:
+    name: "MLPBase"
+    hidden_sizes: [256, 128, 64]
+    activation: "relu"
+  critic:
+    name: "MLPCritic"
+    hidden_sizes: [256, 128, 64]
+    activation: "relu"
+    is_head: False
+  action_distribution:
+    name: "GaussianActDist"
+    min_std: 1.0
+    max_std: 1.0e-6
+RL:
+  PPO:
+    clip_param: 0.2
+    ppo_epoch: 2
+    num_mini_batch: 4
+    value_loss_coef: 2.0
+    entropy_coef: 0.0001
+    lr: 3.0e-9
+    eps: 1.0e-5
+    max_grad_norm: 1.0
+    num_steps: 16
+    use_linear_clip_decay: False
+
+  use_gae: True
+  gamma: 0.99
+  tau: 0.95
+  use_linear_lr_decay: False
+  reward_window_size: 50
+  goal_hidden_size: 512
+  use_normalized_advantage: True
+  reward_scale: 1.0

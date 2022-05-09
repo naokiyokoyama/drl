@@ -1,19 +1,20 @@
-from collections import deque
-import numpy as np
+import argparse
 import os
 import time
-import torch
-from yacs.config import CfgNode as CN
-import argparse
+from collections import deque
+
 import gym
+import numpy as np
+import torch
 from torch.utils.tensorboard import SummaryWriter
+from yacs.config import CfgNode as CN
 
-from drl.a2c_ppo_acktr import utils, algo
-from drl.a2c_ppo_acktr.vector_env import VectorEnv
-from drl.a2c_ppo_acktr.model import Policy
+from drl import algo
+from drl.a2c_ppo_acktr import utils
 from drl.a2c_ppo_acktr.storage import RolloutStorage
-
 from drl.envs.knobs_env import KnobsEnv
+from drl.nets.model import Policy
+from drl.utils.vector_env import VectorEnv
 
 
 def main():
@@ -91,7 +92,7 @@ def run(config, env_class):
             "hidden_size": config.RL.PPO.hidden_size,
         },
     )
-    print('Actor-critic architecture:')
+    print("Actor-critic architecture:")
     print(actor_critic)
     actor_critic.to(device)
 

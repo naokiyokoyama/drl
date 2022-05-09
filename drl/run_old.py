@@ -1,21 +1,23 @@
-from collections import deque, defaultdict, OrderedDict
-from functools import partial
-import numpy as np
+import argparse
 import os
 import time
-import torch
-import argparse
-from gym import spaces
-from torch.utils.tensorboard import SummaryWriter
+from collections import OrderedDict, defaultdict, deque
+from functools import partial
 
-from drl.a2c_ppo_acktr import utils
-from drl import algo
-from drl.nets.model import Policy
-from drl.a2c_ppo_acktr.storage import RolloutStorage
+import numpy as np
+import torch
+from gym import spaces
 
 # Habitat-specific
 from habitat_baselines.common.environments import get_env_class
 from habitat_baselines.config.default import get_config
+from torch.utils.tensorboard import SummaryWriter
+
+from drl import algo
+from drl.a2c_ppo_acktr import utils
+from drl.a2c_ppo_acktr.storage import RolloutStorage
+from drl.nets.model import Policy
+from drl.utils.vector_env import VectorEnv
 
 HEADER = (
     "updates,steps,mean_cumul_reward,mean_reward,mean_success,"
@@ -35,31 +37,34 @@ def run(config):
     """ Set seeds """
     torch.manual_seed(config.TASK_CONFIG.SEED)
     torch.cuda.manual_seed_all(config.TASK_CONFIG.SEED)
-    np.random.seed(config.TASK_CONFIG.SEED)
 
     """ CUDA vs. CPU """
-    if config.CUDA:
-        torch.backends.cudnn.benchmark = False
-        torch.backends.cudnn.deterministic = True
-
     torch.set_num_threads(1)
     device = torch.device("cuda:0" if config.CUDA else "cpu")
 
-    """ Count reward terms for expressive critic """
+    """ Get obs space and count reward terms for expressive critic w/ a temp env"""
+    temp_env = GymWrappedEnv(config)
+    temp_env.reset()
+    obs_space = temp_env.observation_space
+    action_space = temp_env.action_space
     if config.RL.PPO.loss_type in ["", "regular"]:
         # Expressive critic not being used; don't predict reward terms
         num_reward_terms = 0
     else:
-        num_reward_terms = config.TASK_CONFIG.ENVIRONMENT.NUM_KNOBS
-
-    """ Create vector environments """
-    envs_class = get_env_class("VectorKnobsEnv")
-    envs = envs_class(config, config.NUM_ENVIRONMENTS, device)
+        # Create a temporary env just to count reward terms
+        _, _, _, info = temp_env.step(temp_env.action_space.sample())
+        if "reward_terms" not in info:
+            raise RuntimeError(
+                "Attempted to use expressive critic,"
+                "but env does not return reward terms."
+            )
+        num_reward_terms = info["reward_terms"].shape[0]
+    del temp_env
 
     """ Create actor-critic """
     actor_critic = Policy(
-        envs.observation_space.shape,
-        envs.action_space,
+        obs_space.shape,
+        action_space,
         base_kwargs={
             "recurrent": config.RECURRENT_POLICY,
             "reward_terms": num_reward_terms,
@@ -89,17 +94,24 @@ def run(config):
     if num_reward_terms > 0:
         print("# of reward terms (using expressive critic!):", num_reward_terms)
 
+    """ Create vector environments """
+    env_fn_args = tuple(
+        [(config, seed_offset) for seed_offset in range(config.NUM_ENVIRONMENTS)]
+    )
+    envs = VectorEnv(make_env_fn=make_env_fn, env_fn_args=env_fn_args)
+
     """ Set up rollout storage """
     rollouts = RolloutStorage(
         config.RL.PPO.num_steps,
         config.NUM_ENVIRONMENTS,
-        envs.observation_space.shape,
-        envs.action_space,
+        envs.observation_spaces[0].shape,
+        envs.action_spaces[0],
         actor_critic.recurrent_hidden_state_size,
         reward_terms=num_reward_terms,
     )
 
     obs = envs.reset()
+    obs = torch.FloatTensor(np.array(obs))
 
     rollouts.obs[0].copy_(obs)
     rollouts.to(device)
@@ -169,22 +181,34 @@ def run(config):
                 )
 
             # Observe reward and next obs
-            obs, reward, done, infos = envs.step(action.detach())
+            outputs = envs.step(action.cpu().numpy())
+            obs, reward, done, infos = [list(x) for x in zip(*outputs)]
 
-            reward_terms = infos["reward_terms"]
-            episode_metrics["success"].extend(
-                list(infos["success"][done.cpu().numpy()])
-            )
-            episode_cumul_rewards["cumul_reward"].extend(
-                list(infos["cumul_reward"][done.cpu().numpy()])
-            )
-
-            reward = reward.unsqueeze(1)
-            if num_reward_terms == 0:
+            if num_reward_terms > 0:
+                reward_terms = []
+            else:
                 reward_terms = None
+            for idx, info_ in enumerate(infos):
+                # Get rewards terms for expressive critic if needed
+                if num_reward_terms > 0:
+                    reward_terms.append(info_["reward_terms"])
+
+                # Get terminal metrics for ended episodes (e.g., success, cumul_reward)
+                if done[idx]:
+                    for k, v in info_.items():
+                        # Assumes keys in info with 'cumul' are about rewards
+                        if "cumul" in k:
+                            episode_cumul_rewards[k].append(v)
+                        elif type(v) in [float, int, bool]:
+                            episode_metrics[k].append(float(v))
+
+            obs = torch.FloatTensor(np.array(obs))
+            reward = torch.FloatTensor(np.array(reward)).unsqueeze(1)
+            if num_reward_terms > 0:
+                reward_terms = torch.FloatTensor(reward_terms)
 
             # If done then clean the history of observations.
-            masks = torch.logical_not(done).unsqueeze(1)
+            masks = torch.FloatTensor([[0.0] if d else [1.0] for d in done])
             rollouts.insert(
                 obs,
                 recurrent_hidden_states,
@@ -242,7 +266,7 @@ def run(config):
                 "fps:",
                 fps,
                 "sec_per_update:",
-                f"{end - start:.2f}",
+                f"{(end - start) / config.LOG_INTERVAL:.2f}",
             )
             for print_data in all_data:
                 if len(print_data) > 0:  # skip empty dicts
@@ -381,6 +405,9 @@ class GymWrappedEnv:
 
     def seed(self, seed):
         self.wrapped_env.seed(seed)
+
+    def close(self):
+        pass
 
 
 if __name__ == "__main__":

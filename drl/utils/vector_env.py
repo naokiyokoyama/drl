@@ -4,20 +4,9 @@ from multiprocessing.connection import Connection
 from multiprocessing.context import BaseContext
 from queue import Queue
 from threading import Thread
-from typing import (
-    Any,
-    Callable,
-    Dict,
-    List,
-    Optional,
-    Sequence,
-    Set,
-    Tuple,
-    Union,
-)
+from typing import Any, Callable, Dict, List, Optional, Sequence, Set, Tuple, Union
 
 import cv2
-import gym
 import numpy as np
 from gym.spaces import Dict as SpaceDict
 
@@ -44,9 +33,7 @@ EPISODE_OVER = "episode_over"
 GET_METRICS = "get_metrics"
 
 
-def _make_env_fn(
-    config, dataset = None, rank = 0
-):
+def _make_env_fn(config, dataset=None, rank=0):
     """Constructor for default habitat :ref:`env.Env`.
 
     :param config: configuration for environment.
@@ -128,14 +115,10 @@ class VectorEnv:
 
         for write_fn in self._connection_write_fns:
             write_fn((OBSERVATION_SPACE_COMMAND, None))
-        self.observation_spaces = [
-            read_fn() for read_fn in self._connection_read_fns
-        ]
+        self.observation_spaces = [read_fn() for read_fn in self._connection_read_fns]
         for write_fn in self._connection_write_fns:
             write_fn((ACTION_SPACE_COMMAND, None))
-        self.action_spaces = [
-            read_fn() for read_fn in self._connection_read_fns
-        ]
+        self.action_spaces = [read_fn() for read_fn in self._connection_read_fns]
         # for write_fn in self._connection_write_fns:
         #     write_fn((NUMBER_OF_EPISODES_COMMAND, None))
         # self.number_of_episodes = [
@@ -145,8 +128,7 @@ class VectorEnv:
 
     @property
     def num_envs(self):
-        r"""number of individual environments.
-        """
+        r"""number of individual environments."""
         return self._num_envs - len(self._paused)
 
     @staticmethod
@@ -159,8 +141,7 @@ class VectorEnv:
         child_pipe: Optional[Connection] = None,
         parent_pipe: Optional[Connection] = None,
     ) -> None:
-        r"""process worker for creating and interacting with the environment.
-        """
+        r"""process worker for creating and interacting with the environment."""
         env = env_fn(*env_fn_args)
         if parent_pipe is not None:
             parent_pipe.close()
@@ -223,7 +204,7 @@ class VectorEnv:
     def _spawn_workers(
         self,
         env_fn_args: Sequence[Tuple],
-        make_env_fn = _make_env_fn,
+        make_env_fn=_make_env_fn,
     ) -> Tuple[List[Callable[[], Any]], List[Callable[[Any], None]]]:
         parent_connections, worker_connections = zip(
             *[self._mp_ctx.Pipe(duplex=True) for _ in range(self._num_envs)]
@@ -348,8 +329,7 @@ class VectorEnv:
             write_fn((STEP_COMMAND, args))
 
     def wait_step(self):
-        r"""Wait until all the asynchronized environments have synchronized.
-        """
+        r"""Wait until all the asynchronized environments have synchronized."""
         observations = []
         for read_fn in self._connection_read_fns:
             observations.append(read_fn())
@@ -408,8 +388,7 @@ class VectorEnv:
         self._paused.append((index, read_fn, write_fn, worker))
 
     def resume_all(self) -> None:
-        r"""Resumes any paused envs.
-        """
+        r"""Resumes any paused envs."""
         for index, read_fn, write_fn, worker in reversed(self._paused):
             self._connection_read_fns.insert(index, read_fn)
             self._connection_write_fns.insert(index, write_fn)
@@ -457,9 +436,7 @@ class VectorEnv:
             function_args_list = [None] * len(function_names)
         assert len(function_names) == len(function_args_list)
         func_args = zip(function_names, function_args_list)
-        for write_fn, func_args_on in zip(
-            self._connection_write_fns, func_args
-        ):
+        for write_fn, func_args_on in zip(self._connection_write_fns, func_args):
             write_fn((CALL_COMMAND, func_args_on))
         results = []
         for read_fn in self._connection_read_fns:
@@ -467,11 +444,8 @@ class VectorEnv:
         self._is_waiting = False
         return results
 
-    def render(
-        self, mode: str = "human", *args, **kwargs
-    ) -> Union[np.ndarray, None]:
-        r"""Render observations from all environments in a tiled image.
-        """
+    def render(self, mode: str = "human", *args, **kwargs) -> Union[np.ndarray, None]:
+        r"""Render observations from all environments in a tiled image."""
         for write_fn in self._connection_write_fns:
             write_fn((RENDER_COMMAND, (args, {"mode": "rgb_array", **kwargs})))
         images = [read_fn() for read_fn in self._connection_read_fns]
@@ -512,7 +486,7 @@ class ThreadedVectorEnv(VectorEnv):
     def _spawn_workers(
         self,
         env_fn_args: Sequence[Tuple],
-        make_env_fn = _make_env_fn,
+        make_env_fn=_make_env_fn,
     ) -> Tuple[List[Callable[[], Any]], List[Callable[[Any], None]]]:
         parent_read_queues, parent_write_queues = zip(
             *[(Queue(), Queue()) for _ in range(self._num_envs)]
@@ -539,6 +513,7 @@ class ThreadedVectorEnv(VectorEnv):
             [q.put for q in parent_write_queues],
         )
 
+
 def tile_images(images: List[np.ndarray]) -> np.ndarray:
     r"""Tile multiple images into single image
 
@@ -552,7 +527,7 @@ def tile_images(images: List[np.ndarray]) -> np.ndarray:
     assert len(images) > 0, "empty list of images"
     # np_images = np.asarray(images)
     # n_images, height, width, n_channels = np_images.shape
-    
+
     n_images = len(images)
     height, width, n_channels = images[0].shape
 
@@ -560,17 +535,12 @@ def tile_images(images: List[np.ndarray]) -> np.ndarray:
     new_width = int(np.ceil(float(n_images) / new_height))
     # pad with empty images to complete the rectangle
     np_images = np.array(
-        images
-        + [images[0] * 0 for _ in range(n_images, new_height * new_width)]
+        images + [images[0] * 0 for _ in range(n_images, new_height * new_width)]
     )
     # img_HWhwc
-    out_image = np_images.reshape(
-        new_height, new_width, height, width, n_channels
-    )
+    out_image = np_images.reshape(new_height, new_width, height, width, n_channels)
     # img_HhWwc
     out_image = out_image.transpose(0, 2, 1, 3, 4)
     # img_Hh_Ww_c
-    out_image = out_image.reshape(
-        new_height * height, new_width * width, n_channels
-    )
+    out_image = out_image.reshape(new_height * height, new_width * width, n_channels)
     return out_image
