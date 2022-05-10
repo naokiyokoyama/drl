@@ -29,8 +29,11 @@ class RolloutStorage:
         # self.buffers["actions"] = None
 
         # We can definitively define the shapes of these sub-buffers without a sample
-        for i in ["not_dones", "rewards", "value_preds", "returns", "action_log_probs"]:
+        for i in ["rewards", "value_preds", "returns", "action_log_probs"]:
             self.buffers[i] = torch.zeros(num_steps + 1, num_envs, 1, device=device)
+        self.buffers["not_dones"] = torch.zeros(
+            num_steps + 1, num_envs, 1, device=device, dtype=torch.bool
+        )
 
         self.current_rollout_step_idx = 0
 
@@ -102,17 +105,13 @@ class RolloutStorage:
             value_preds=value_preds,
             rewards=rewards.unsqueeze(-1) if rewards.ndim == 1 else rewards,
         )
-        next_step = dict(observations=next_observations, masks=next_not_dones)
+        next_step = dict(observations=next_observations, not_dones=next_not_dones)
         for offset, data in [(0, current_step), (1, next_step)]:
             self.buffers.set(
                 self.current_rollout_step_idx + offset,
                 data,
                 strict=False,
             )
-        # print(8976896896, "insert method")
-        # print(next_observations)
-        # print(self.buffers["observations"][self.current_rollout_step_idx + 1])
-        # print(self.buffers["observations"][self.current_rollout_step_idx + 1].shape)
 
     def advance_rollout(self):
         self.current_rollout_step_idx += 1
@@ -173,14 +172,8 @@ class RolloutStorage:
             f"of PPO mini batches ({num_mini_batch})."
         )
 
-        # print(11111212121212198)
-        # print(self.buffers["observations"][5])
-        # print(self.buffers["observations"][self.current_rollout_step_idx + 1])
-        # print(self.current_rollout_step_idx)
         for inds in torch.randperm(self.current_rollout_step_idx).chunk(num_mini_batch):
             batch = self.buffers[inds]
             batch["advantages"] = advantages[inds]
-            # print(89678967867862387623423423)
-            # print(batch["observations"])
 
             yield batch.map(lambda v: v.flatten(0, 1))
