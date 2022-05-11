@@ -1,5 +1,4 @@
-import copy
-from typing import Dict, Tuple
+from typing import Dict
 
 import torch
 import torch.nn as nn
@@ -62,12 +61,10 @@ class PPO(nn.Module):
         dist_entropy_epoch = 0
 
         for e in range(self.ppo_epoch):
-            # if False and self.actor_critic.is_recurrent:  # TODO: Fix this hack
-            #     data_generator = rollouts.recurrent_generator
-            # else:
-            #     data_generator = rollouts.feed_forward_generator
-            # data_generator = rollouts.recurrent_generator
-            data_generator = rollouts.feed_forward_generator
+            if self.actor_critic.is_recurrent:
+                data_generator = rollouts.recurrent_generator
+            else:
+                data_generator = rollouts.feed_forward_generator
 
             for batch in data_generator(advantages, self.num_mini_batch):
                 (
@@ -115,14 +112,6 @@ class PPO(nn.Module):
                 value_loss_epoch += value_loss.item()
                 action_loss_epoch += action_loss.item()
                 dist_entropy_epoch += dist_entropy.item()
-                print("returns:", batch["returns"].mean().item())
-            # print(678957857865)
-            # print(batch["observations"][6])
-            # print(batch["actions"][6])
-            # print(batch["action_log_probs"][6])
-            # print(batch["advantages"][6])
-            # print(batch["value_preds"][6])
-            # print(batch["returns"][6])
 
         num_updates = self.ppo_epoch * self.num_mini_batch
         rollouts.after_update()

@@ -59,6 +59,10 @@ class ActorCritic(nn.Module):
             other["critic_rnn_hx"] = self.critic.rnn_hx
         return other
 
+    @property
+    def is_recurrent(self):
+        return self.net.is_recurrent
+
     @classmethod
     def from_config(cls, config, obs_space, action_space, critic_obs_space=None):
         """Observation and actions spaces needed to define the sizes of network inputs

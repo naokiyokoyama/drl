@@ -61,8 +61,7 @@ class GaussianActDist(nn.Module):
         num_inputs: int,
         num_outputs: int,
         min_std: float = 1e-6,
-        # max_std: float = 1.0,
-        max_std: float = 0.3,
+        max_std: float = 1.0,
     ) -> None:
         super().__init__()
         self.min_std = min_std
@@ -72,8 +71,10 @@ class GaussianActDist(nn.Module):
 
     def forward(self, x: Tensor) -> CustomGaussian:
         mu = self.mu(x)
-        # mu = torch.tanh(mu)
-        std = torch.clamp(self.std(x), min=self.min_std, max=self.max_std)
+        std = self.std(x)
+
+        std = torch.exp(std)
+        std = torch.clamp(std, min=self.min_std, max=self.max_std)
 
         return CustomGaussian(mu, std)
 
