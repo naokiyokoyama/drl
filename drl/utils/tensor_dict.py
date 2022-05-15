@@ -111,7 +111,6 @@ class TensorDict(Dict[str, Union["TensorDict", torch.Tensor]]):
 
                 v = value[k]
                 if isinstance(v, (TensorDict, dict)):
-                    print(9878907, k)
                     self[k].set(index, v, strict=strict)
                 else:
                     self[k][index].copy_(torch.as_tensor(v))
