@@ -84,7 +84,7 @@ class RolloutStorage:
         value_preds,
         rewards,
         next_observations,
-        next_not_dones,
+        next_dones,
     ):
         if "actions" not in self.buffers:
             if isinstance(actions, np.ndarray):
@@ -105,6 +105,9 @@ class RolloutStorage:
             value_preds=value_preds,
             rewards=rewards.unsqueeze(-1) if rewards.ndim == 1 else rewards,
         )
+        next_not_dones = torch.logical_not(torch.tensor(next_dones, dtype=torch.bool))
+        if next_not_dones.dim() == 1:
+            next_not_dones = next_not_dones.unsqueeze(-1)
         next_step = dict(observations=next_observations, not_dones=next_not_dones)
         for offset, data in [(0, current_step), (1, next_step)]:
             self.buffers.set(

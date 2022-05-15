@@ -69,20 +69,19 @@ class PPORunner(BaseRunner):
                 # TODO: support action transformation
                 observations, rewards, dones, infos = self.envs.step(actions)
                 observations = observations["obs"]
+
+                self.mean_returns.update(rewards, dones)
+
                 rewards *= self.config.RL.reward_scale
-                print("mean_rew:", rewards.mean().item())
 
                 # If done then clean the history of observations.
-                not_dones = torch.tensor(
-                    [[0.0] if d else [1.0] for d in dones], dtype=torch.bool
-                )
                 self.rollouts.insert(
                     next_observations=observations,
                     actions=actions,
                     action_log_probs=action_log_probs,
                     value_preds=value,
                     rewards=rewards,
-                    next_not_dones=not_dones,
+                    next_dones=dones,
                 )
                 self.rollouts.advance_rollout()
 
@@ -96,12 +95,8 @@ class PPORunner(BaseRunner):
                 self.config.RL.tau,
             )
 
-            # value_loss, action_loss, dist_entropy = self.ppo.update(self.rollouts)
             ppo_info = self.ppo.update(self.rollouts)
-            # print(ppo_info)
-            # print("rew:", torch.mean(rewards).item())
-
-            # self.tensorboard.update_metrics()
+            print("mean_returns:", self.mean_returns.mean())
 
     def _update_lr(self, update_idx):
         if self.config.RL.use_linear_lr_decay:

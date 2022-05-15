@@ -1,6 +1,7 @@
 import torch
 
 from drl.utils.registry import drl_registry
+from drl.utils.common import MeanReturns
 
 
 class BaseRunner:
@@ -16,6 +17,8 @@ class BaseRunner:
         else:
             self.envs = envs
             self.num_envs = None  # define later
+
+        self.mean_returns = MeanReturns()
 
     @staticmethod
     def set_seed(seed):
