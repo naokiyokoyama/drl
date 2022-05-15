@@ -27,6 +27,8 @@ class CustomCategorical(torch.distributions.Categorical):  # type: ignore
 
 @drl_registry.register_act_dist
 class CategoricalActDist(nn.Module):
+    name = "CategoricalActDist"
+
     def __init__(self, num_inputs: int, num_outputs: int) -> None:
         super().__init__()
         self.linear = initialized_linear(num_inputs, num_outputs, gain=0.01)
@@ -56,33 +58,42 @@ class CustomGaussian(torch.distributions.normal.Normal, ABC):
 
 @drl_registry.register_act_dist
 class GaussianActDist(nn.Module):
+    name = "GaussianActDist"
+
     def __init__(
         self,
         num_inputs: int,
         num_outputs: int,
-        min_std: float = 1e-6,
-        max_std: float = 1.0,
+        min_sigma: float = 1e-6,
+        max_sigma: float = 1.0,
     ) -> None:
         super().__init__()
-        self.min_std = min_std
-        self.max_std = max_std
-        self.mu = initialized_linear(num_inputs, num_outputs, gain=0.01)
-        self.std = initialized_linear(num_inputs, num_outputs, gain=0.01)
+        self.min_sigma = min_sigma
+        self.max_sigma = max_sigma
+        self.mu = torch.jit.script(
+            initialized_linear(num_inputs, num_outputs, gain=0.01)
+        )
+        self.sigma = torch.jit.script(
+            initialized_linear(num_inputs, num_outputs, gain=0.01)
+        )
+        self.output_mu_sigma = None
 
     def forward(self, x: Tensor) -> CustomGaussian:
         mu = self.mu(x)
-        std = self.std(x)
+        sigma = self.sigma(x)
 
-        std = torch.exp(std)
-        std = torch.clamp(std, min=self.min_std, max=self.max_std)
+        sigma = torch.exp(sigma)
+        sigma = torch.clamp(sigma, min=self.min_sigma, max=self.max_sigma)
+        # Store these for losses/schedulers
+        self.output_mu_sigma = torch.cat([mu, sigma], dim=1)
 
-        return CustomGaussian(mu, std)
+        return CustomGaussian(mu, sigma)
 
     @classmethod
     def from_config(cls, config, hidden_size: int, num_outputs: int):
         return cls(
             num_inputs=hidden_size,
             num_outputs=num_outputs,
-            min_std=config.ACTOR_CRITIC.action_distribution.min_std,
-            max_std=config.ACTOR_CRITIC.action_distribution.max_std,
+            min_sigma=config.ACTOR_CRITIC.action_distribution.min_sigma,
+            max_sigma=config.ACTOR_CRITIC.action_distribution.max_sigma,
         )

@@ -14,6 +14,7 @@ class PPO(nn.Module):
     def __init__(
         self,
         actor_critic,
+        scheduler,
         clip_param,
         ppo_epoch,
         num_mini_batch,
@@ -28,6 +29,7 @@ class PPO(nn.Module):
         super().__init__()
 
         self.actor_critic = actor_critic
+        self.scheduler = scheduler
 
         self.clip_param = clip_param
         self.ppo_epoch = ppo_epoch
@@ -60,13 +62,13 @@ class PPO(nn.Module):
         action_loss_epoch = 0
         dist_entropy_epoch = 0
 
-        for e in range(self.ppo_epoch):
+        for epoch in range(self.ppo_epoch):
             if self.actor_critic.is_recurrent:
-                data_generator = rollouts.recurrent_generator
+                generator = rollouts.recurrent_generator
             else:
-                data_generator = rollouts.feed_forward_generator
+                generator = rollouts.feed_forward_generator
 
-            for batch in data_generator(advantages, self.num_mini_batch):
+            for idx, batch in enumerate(generator(advantages, self.num_mini_batch)):
                 (
                     values,
                     action_log_probs,
@@ -108,6 +110,13 @@ class PPO(nn.Module):
                     self.actor_critic.parameters(), self.max_grad_norm
                 )
                 self.optimizer.step()
+
+                for param_group in self.optimizer.param_groups:
+                    if self.scheduler.name == "AdaptiveScheduler" and idx + epoch == 0:
+                        continue
+                    param_group["lr"] = self.scheduler.update(
+                        param_group["lr"], algo=self, batch=batch
+                    )
 
                 value_loss_epoch += value_loss.item()
                 action_loss_epoch += action_loss.item()

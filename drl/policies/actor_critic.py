@@ -51,12 +51,15 @@ class ActorCritic(nn.Module):
         return value, dist, other
 
     def _get_other(self):
-        """Primarily for returning rnn_hx, but could be used for auxiliary tasks"""
+        """Primarily for returning rnn_hx, but could be used for auxiliary
+        tasks/losses/schedulers/etc."""
         other = {}
         if self.net.is_recurrent:
             other["net_rnn_hx"] = self.net.rnn_hx
         if getattr(self.critic, "is_recurrent", False):
             other["critic_rnn_hx"] = self.critic.rnn_hx
+        if self.action_distribution.name == "GaussianActDist":
+            other["mu_sigma"] = self.action_distribution.output_mu_sigma
         return other
 
     @property
@@ -93,5 +96,5 @@ class ActorCritic(nn.Module):
             critic_is_head=ac_cfg.critic.is_head,
         )
 
-    def forward(self, *x):
-        raise NotImplementedError
+    def forward(self, x):
+        return self.act(x)

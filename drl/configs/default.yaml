@@ -2,26 +2,33 @@ RUNNER:
   name: "PPORunner"
 ENVS_NAME: ""
 NUM_ENVIRONMENTS: 1
+NUM_UPDATES: 1000
 CUDA: True
 ACTOR_CRITIC:
   name: "ActorCritic"
   net:
     name: "MLPBase"
     hidden_sizes: [256, 128, 64]
-    activation: "relu"
+    activation: "elu"
   critic:
     name: "MLPCritic"
     hidden_sizes: [256, 128, 64]
-    activation: "relu"
+    activation: "elu"
     is_head: False
   action_distribution:
     name: "GaussianActDist"
-    min_std: 1.0e-6
-    max_std: 1.0
+    min_sigma: 1.0e-6
+    max_sigma: 1.0
 RL:
+  scheduler:
+    name: AdaptiveScheduler
+#    name: IdentityScheduler
+    kl_threshold: 0.008
+    min_lr: 1.0e-6
+    max_lr: 1.0e-2
   PPO:
     clip_param: 0.2
-    ppo_epoch: 2
+    ppo_epoch: 1
     num_mini_batch: 4
     value_loss_coef: 2.0
     entropy_coef: 0.000
@@ -37,4 +44,5 @@ RL:
   use_linear_lr_decay: False
   reward_window_size: 50
   use_normalized_advantage: True
-  reward_scale: 1.0
+#  reward_scale: 1.0
+  reward_scale: 0.01

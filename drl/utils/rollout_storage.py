@@ -18,7 +18,7 @@ TensorLike = Union[torch.Tensor, np.ndarray]
 class RolloutStorage:
     r"""Class for storing rollout information for RL trainers."""
 
-    def __init__(self, num_steps, num_envs, device):
+    def __init__(self, num_steps, num_envs, device, observations=None):
         self.buffers = TensorDict()
         self.num_steps = num_steps
         self._num_envs = num_envs
@@ -36,25 +36,27 @@ class RolloutStorage:
         )
 
         self.current_rollout_step_idx = 0
+        if observations is not None:
+            self.insert_initial_data("observations", observations)
 
-    def insert_initial_obs(self, observations: Union[TensorDict, TensorLike]):
+    def insert_initial_data(self, key, data: Union[TensorDict, TensorLike]):
         assert isinstance(
-            observations, (TensorDict, np.ndarray, torch.Tensor)
-        ), f"Got observations of invalid type {type(observations)}"
+            data, (TensorDict, np.ndarray, torch.Tensor)
+        ), f"Got observations of invalid type {type(data)}"
 
-        if isinstance(observations, TensorDict):
-            obs_envs = list(observations.values())[0].shape[0]
+        if isinstance(data, TensorDict):
+            num_envs = list(data.values())[0].shape[0]
         else:
-            obs_envs = observations.shape[0]
+            num_envs = data.shape[0]
 
-        assert obs_envs == self._num_envs, (
+        assert num_envs == self._num_envs, (
             f"Rollout storage was created for {self._num_envs} envs, "
-            f"but got an initial observation for {obs_envs} envs instead."
+            f"but got an initial {key} for {num_envs} envs instead."
         )
 
-        if isinstance(observations, TensorDict):
-            for k, v in observations.items():
-                self.buffers["observations"][k] = torch.zeros(
+        if isinstance(data, TensorDict):
+            for k, v in data.items():
+                self.buffers[key][k] = torch.zeros(
                     self.num_steps + 1,
                     self._num_envs,
                     *v.shape,
@@ -62,14 +64,14 @@ class RolloutStorage:
                     device=self.device,
                 )
         else:
-            if isinstance(observations, np.ndarray):
-                data_type = torch.from_numpy(observations).dtype
+            if isinstance(data, np.ndarray):
+                data_type = torch.from_numpy(data).dtype
             else:
-                data_type = observations.dtype
-            self.buffers["observations"] = torch.zeros(
+                data_type = data.dtype
+            self.buffers[key] = torch.zeros(
                 self.num_steps + 1,
                 self._num_envs,
-                *observations.shape[1:],
+                *data.shape[1:],
                 dtype=data_type,
                 device=self.device,
             )
@@ -85,6 +87,7 @@ class RolloutStorage:
         rewards,
         next_observations,
         next_dones,
+        other,
     ):
         if "actions" not in self.buffers:
             if isinstance(actions, np.ndarray):
@@ -104,11 +107,18 @@ class RolloutStorage:
             action_log_probs=action_log_probs,
             value_preds=value_preds,
             rewards=rewards.unsqueeze(-1) if rewards.ndim == 1 else rewards,
+            **other,
         )
         next_not_dones = torch.logical_not(torch.tensor(next_dones, dtype=torch.bool))
         if next_not_dones.dim() == 1:
             next_not_dones = next_not_dones.unsqueeze(-1)
         next_step = dict(observations=next_observations, not_dones=next_not_dones)
+
+        # Add new entries from other dict if they don't exist already
+        for k, v in other.items():
+            if k not in self.buffers:
+                self.insert_initial_data(k, v)
+
         for offset, data in [(0, current_step), (1, next_step)]:
             self.buffers.set(
                 self.current_rollout_step_idx + offset,

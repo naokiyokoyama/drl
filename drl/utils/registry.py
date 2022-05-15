@@ -4,10 +4,6 @@ from typing import Any, Callable, DefaultDict, Dict, Optional, Type
 import gym
 from torch import nn
 
-# from drl.nets.basic import NNBase
-# from drl.policies.actor_critic import ActorCritic
-# from drl.runners.base_runner import BaseRunner
-
 
 class Singleton(type):
     _instances: Dict["Singleton", "Singleton"] = {}
@@ -47,13 +43,17 @@ class Registry(metaclass=Singleton):
 
     @classmethod
     def _get_impl(cls, _type: str, name: str):
-        return cls.mapping[_type].get(name, None)
+        cls_ = cls.mapping[_type].get(name, None)
+        if cls_ is None:
+            print(
+                f"{name} not in {_type} registry! Here's what's available:\n",
+                "\n".join(list(cls.mapping[_type].keys())),
+            )
+        return cls_
 
     @classmethod
     def register_runner(cls, to_register=None, *, name: Optional[str] = None):
-        return cls._register_impl(
-            "runner", to_register, name
-        )  # , assert_type=BaseRunner)
+        return cls._register_impl("runner", to_register, name)
 
     @classmethod
     def get_runner(cls, name: str):
@@ -69,10 +69,7 @@ class Registry(metaclass=Singleton):
 
     @classmethod
     def register_actor_critic(cls, to_register=None, *, name: Optional[str] = None):
-        return cls._register_impl(
-            "actor_critic", to_register, name
-        )  # , assert_type=ActorCritic
-        # )
+        return cls._register_impl("actor_critic", to_register, name)
 
     @classmethod
     def get_actor_critic(cls, name: str):  # -> ActorCritic:
@@ -80,7 +77,7 @@ class Registry(metaclass=Singleton):
 
     @classmethod
     def register_nn_base(cls, to_register=None, *, name: Optional[str] = None):
-        return cls._register_impl("nn_base", to_register, name)  # , assert_type=NNBase)
+        return cls._register_impl("nn_base", to_register, name)
 
     @classmethod
     def get_nn_base(cls, name: str):  # -> NNBase:
@@ -93,6 +90,14 @@ class Registry(metaclass=Singleton):
     @classmethod
     def get_act_dist(cls, name: str) -> nn.Module:
         return cls._get_impl("act_dist", name)
+
+    @classmethod
+    def register_scheduler(cls, to_register=None, *, name: Optional[str] = None):
+        return cls._register_impl("scheduler", to_register, name)
+
+    @classmethod
+    def get_scheduler(cls, name: str) -> nn.Module:
+        return cls._get_impl("scheduler", name)
 
 
 drl_registry = Registry()
