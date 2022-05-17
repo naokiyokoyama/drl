@@ -66,28 +66,44 @@ class GaussianActDist(nn.Module):
         num_outputs: int,
         min_sigma: float = 1e-6,
         max_sigma: float = 1.0,
+        sigma_as_params: bool = True,
     ) -> None:
         super().__init__()
         self.min_sigma = min_sigma
         self.max_sigma = max_sigma
-        self.mu = torch.jit.script(
-            initialized_linear(num_inputs, num_outputs, gain=0.01)
-        )
-        self.sigma = torch.jit.script(
-            initialized_linear(num_inputs, num_outputs, gain=0.01)
-        )
+        self.sigma_as_params = sigma_as_params
+
+        self.mu = initialized_linear(num_inputs, num_outputs, gain=0.01)
+        if sigma_as_params:
+            self.sigma = nn.Parameter(
+                torch.zeros(num_outputs, requires_grad=True, dtype=torch.float32)
+            )
+            nn.init.constant_(self.sigma, val=0)
+        else:
+            self.sigma = initialized_linear(num_inputs, num_outputs, gain=0.01)
+
         self.output_mu_sigma = None
 
     def forward(self, x: Tensor) -> CustomGaussian:
         mu = self.mu(x)
-        sigma = self.sigma(x)
+        if self.sigma_as_params:
+            num_envs = x.shape[0]
+            sigma = self.sigma.reshape(1, -1).repeat(num_envs, 1)
+        else:
+            sigma = self.sigma(x)
 
         sigma = torch.exp(sigma)
         sigma = torch.clamp(sigma, min=self.min_sigma, max=self.max_sigma)
+
         # Store these for losses/schedulers
         self.output_mu_sigma = torch.cat([mu, sigma], dim=1)
 
         return CustomGaussian(mu, sigma)
+
+    def convert_to_torchscript(self):
+        self.mu = torch.jit.script(self.mu)
+        if not self.sigma_as_params:
+            self.sigma = torch.jit.script(self.sigma)
 
     @classmethod
     def from_config(cls, config, hidden_size: int, num_outputs: int):
@@ -96,4 +112,5 @@ class GaussianActDist(nn.Module):
             num_outputs=num_outputs,
             min_sigma=config.ACTOR_CRITIC.action_distribution.min_sigma,
             max_sigma=config.ACTOR_CRITIC.action_distribution.max_sigma,
+            sigma_as_params=config.ACTOR_CRITIC.action_distribution.sigma_as_params,
         )

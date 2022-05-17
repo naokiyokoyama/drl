@@ -19,6 +19,7 @@ ACTOR_CRITIC:
     name: "GaussianActDist"
     min_sigma: 1.0e-6
     max_sigma: 1.0
+    sigma_as_params: True
 RL:
   scheduler:
     name: AdaptiveScheduler
@@ -44,5 +45,4 @@ RL:
   use_linear_lr_decay: False
   reward_window_size: 50
   use_normalized_advantage: True
-#  reward_scale: 1.0
   reward_scale: 0.01
