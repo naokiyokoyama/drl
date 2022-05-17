@@ -33,7 +33,7 @@ class ActorCritic(nn.Module):
     def evaluate_actions(self, observations, action):
         value, dist, _ = self._process_observations(observations)
         action_log_probs = dist.log_probs(action)
-        distribution_entropy = dist.entropy()
+        distribution_entropy = dist.entropy().sum(dim=-1)
 
         return value, action_log_probs, distribution_entropy
 
