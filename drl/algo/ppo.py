@@ -3,6 +3,7 @@ from typing import Dict
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from drl.utils.registry import drl_registry
 from torch import Tensor
 
 from drl.utils.rollout_storage import RolloutStorage
@@ -102,7 +103,7 @@ class PPO(nn.Module):
 
                 self.optimizer.zero_grad()
                 (
-                    value_loss * self.value_loss_coef
+                    0.5 * value_loss * self.value_loss_coef
                     + action_loss
                     - dist_entropy * self.entropy_coef
                 ).backward()
@@ -125,9 +126,25 @@ class PPO(nn.Module):
         num_updates = self.ppo_epoch * self.num_mini_batch
         rollouts.after_update()
         losses_data = {
-            "value_loss": value_loss_epoch / num_updates,
-            "action_loss": action_loss_epoch / num_updates,
-            "dist_entropy": dist_entropy_epoch / num_updates,
+            "losses/c_loss": value_loss_epoch / num_updates,
+            "losses/a_loss": action_loss_epoch / num_updates,
+            "losses/entropy": dist_entropy_epoch / num_updates,
         }
 
         return losses_data
+
+    @classmethod
+    def from_config(cls, config, actor_critic):
+        scheduler_cls = drl_registry.get_scheduler(config.RL.scheduler.name)
+        return cls(
+            actor_critic,
+            scheduler_cls.from_config(config),
+            config.RL.PPO.clip_param,
+            config.RL.PPO.ppo_epoch,
+            config.RL.PPO.num_mini_batch,
+            config.RL.PPO.value_loss_coef,
+            config.RL.PPO.entropy_coef,
+            lr=config.RL.PPO.lr,
+            eps=config.RL.PPO.eps,
+            max_grad_norm=config.RL.PPO.max_grad_norm,
+        )

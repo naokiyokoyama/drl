@@ -4,6 +4,8 @@ from drl.utils.registry import drl_registry
 from drl.utils.common import MeanReturns
 import tqdm
 
+from drl.utils.writer import Writer
+
 
 class BaseRunner:
     def __init__(self, config, envs=None):
@@ -19,23 +21,40 @@ class BaseRunner:
             self.envs = envs
             self.num_envs = None  # define later in init_train
 
+        if self.config.TENSORBOARD_DIR == "":
+            self.writer = None
+        else:
+            self.writer = Writer.from_config(self.config)
+
         self.mean_returns = MeanReturns()
-        self.num_updates = None
+        self.update_idx = 0
+        self.step_idx = 0
+        self.max_num_updates = None
         self.actor_critic = None
+        self.write_data = {}
 
     def train(self):
         observations = self.init_train()
-        for _ in tqdm.trange(self.num_updates):
+        for _ in tqdm.trange(self.max_num_updates):
+            self.write_data = {}
             for step in range(self.config.RL.PPO.num_steps):
                 observations = self.step(observations)
             self.update(observations)
+            self.write()
+            self.update_idx += 1
+            self.step_idx += self.config.RL.PPO.num_steps * self.num_envs
 
     def init_train(self):
-        self.num_updates = self.config.NUM_UPDATES
+        self.max_num_updates = self.config.NUM_UPDATES
         observations = self.envs.reset()["obs"]
         if self.num_envs is None:
             self.num_envs = observations.shape[0]
         return observations
+
+    def write(self):
+        if self.writer is None:
+            return
+        self.writer.add_multi_scalars(self.write_data, self.step_idx)
 
     def step(self, observations):
         raise NotImplementedError

@@ -30,19 +30,7 @@ class PPORunner(BaseRunner):
         self.rollouts = RolloutStorage(
             self.config.RL.PPO.num_steps, self.num_envs, self.device, observations
         )
-        scheduler_cls = drl_registry.get_scheduler(self.config.RL.scheduler.name)
-        self.ppo = PPO(
-            self.actor_critic,
-            scheduler_cls.from_config(self.config),
-            self.config.RL.PPO.clip_param,
-            self.config.RL.PPO.ppo_epoch,
-            self.config.RL.PPO.num_mini_batch,
-            self.config.RL.PPO.value_loss_coef,
-            self.config.RL.PPO.entropy_coef,
-            lr=self.config.RL.PPO.lr,
-            eps=self.config.RL.PPO.eps,
-            max_grad_norm=self.config.RL.PPO.max_grad_norm,
-        )
+        self.ppo = PPO.from_config(self.config, self.actor_critic)
         return observations
 
     def step(self, observations):
@@ -87,5 +75,6 @@ class PPORunner(BaseRunner):
             self.config.RL.tau,
         )
 
-        ppo_info = self.ppo.update(self.rollouts)
+        self.write_data.update(self.ppo.update(self.rollouts))
+        self.write_data["rewards/step"] = self.mean_returns.mean()
         print("mean_returns:", self.mean_returns.mean())
