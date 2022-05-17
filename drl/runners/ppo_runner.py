@@ -17,6 +17,8 @@ class PPORunner(BaseRunner):
             config, self.envs.observation_space, self.envs.action_space
         )
         self.actor_critic.to(self.device)
+        if config.USE_TORCHSCRIPT:
+            self.actor_critic.convert_to_torchscript()
         print("Actor-critic architecture:\n", self.actor_critic)
 
         # Training-only attributes

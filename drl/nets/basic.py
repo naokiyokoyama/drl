@@ -53,7 +53,7 @@ def construct_mlp_base(input_size, hidden_sizes, activation="relu"):
         )
         layers.append(activation_layer())
         prev_size = out_size
-    mlp = nn.Sequential(*layers)
+    mlp = nn.Sequential(*layers) if len(layers) > 1 else layers[0]
 
     return mlp
 
@@ -64,10 +64,12 @@ class MLPBase(NNBase):  # noqa
         super().__init__(recurrent=False, output_shape=(hidden_sizes[-1],))
         assert len(input_shape) == 1, "MLPBase can only take 1D inputs!"
         self.mlp = construct_mlp_base(input_shape[0], hidden_sizes, activation)
-        self.mlp = torch.jit.script(self.mlp)
 
     def forward(self, net_input):
         return self.mlp(net_input)
+
+    def convert_to_torchscript(self):
+        self.mlp = torch.jit.script(self.mlp)
 
     @classmethod
     def from_config(cls, nn_config, obs_space):
@@ -85,4 +87,3 @@ class MLPCritic(MLPBase):  # noqa
         super().__init__(input_shape, all_sizes, activation)
         # Remove the final activation layer
         self.mlp = nn.Sequential(*list(self.mlp.children())[:-1])
-        self.mlp = torch.jit.script(self.mlp)

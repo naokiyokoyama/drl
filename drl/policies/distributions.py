@@ -67,11 +67,13 @@ class GaussianActDist(nn.Module):
         min_sigma: float = 1e-6,
         max_sigma: float = 1.0,
         sigma_as_params: bool = True,
+        clip_sigma: bool = True,
     ) -> None:
         super().__init__()
         self.min_sigma = min_sigma
         self.max_sigma = max_sigma
         self.sigma_as_params = sigma_as_params
+        self.clip_sigma = clip_sigma
 
         self.mu = initialized_linear(num_inputs, num_outputs, gain=0.01)
         if sigma_as_params:
@@ -93,7 +95,8 @@ class GaussianActDist(nn.Module):
             sigma = self.sigma(x)
 
         sigma = torch.exp(sigma)
-        sigma = torch.clamp(sigma, min=self.min_sigma, max=self.max_sigma)
+        if self.clip_sigma:
+            sigma = torch.clamp(sigma, min=self.min_sigma, max=self.max_sigma)
 
         # Store these for losses/schedulers
         self.output_mu_sigma = torch.cat([mu, sigma], dim=1)
@@ -113,4 +116,5 @@ class GaussianActDist(nn.Module):
             min_sigma=config.ACTOR_CRITIC.action_distribution.min_sigma,
             max_sigma=config.ACTOR_CRITIC.action_distribution.max_sigma,
             sigma_as_params=config.ACTOR_CRITIC.action_distribution.sigma_as_params,
+            clip_sigma=config.ACTOR_CRITIC.action_distribution.clip_sigma,
         )

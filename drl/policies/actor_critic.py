@@ -66,6 +66,11 @@ class ActorCritic(nn.Module):
     def is_recurrent(self):
         return self.net.is_recurrent
 
+    def convert_to_torchscript(self):
+        self.net.convert_to_torchscript()
+        self.action_distribution.convert_to_torchscript()
+        self.critic.convert_to_torchscript()
+
     @classmethod
     def from_config(cls, config, obs_space, action_space, critic_obs_space=None):
         """Observation and actions spaces needed to define the sizes of network inputs

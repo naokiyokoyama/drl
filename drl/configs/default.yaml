@@ -4,6 +4,7 @@ ENVS_NAME: ""
 NUM_ENVIRONMENTS: 1
 NUM_UPDATES: 1000
 CUDA: True
+USE_TORCHSCRIPT: True
 ACTOR_CRITIC:
   name: "ActorCritic"
   net:
@@ -20,6 +21,7 @@ ACTOR_CRITIC:
     min_sigma: 1.0e-6
     max_sigma: 1.0
     sigma_as_params: True
+    clip_sigma: False
 RL:
   scheduler:
     name: AdaptiveScheduler
