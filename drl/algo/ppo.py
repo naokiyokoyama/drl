@@ -51,10 +51,9 @@ class PPO(nn.Module):
         advantages = (
             rollouts.buffers["returns"][:-1] - rollouts.buffers["value_preds"][:-1]
         )
-        if not self.use_normalized_advantage:
-            return advantages
-
-        return (advantages - advantages.mean()) / (advantages.std() + EPS_PPO)
+        if self.use_normalized_advantage:
+            return (advantages - advantages.mean()) / (advantages.std() + EPS_PPO)
+        return advantages
 
     def update(self, rollouts: RolloutStorage) -> Dict:
         advantages = self.get_advantages(rollouts)
