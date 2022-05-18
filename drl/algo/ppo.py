@@ -93,9 +93,9 @@ class PPO(nn.Module):
                     value_losses_clipped = (value_pred_clipped - batch["returns"]).pow(
                         2
                     )
-                    value_loss = 0.5 * torch.max(value_losses, value_losses_clipped)
+                    value_loss = torch.max(value_losses, value_losses_clipped)
                 else:
-                    value_loss = 0.5 * (batch["returns"] - values).pow(2)
+                    value_loss = (batch["returns"] - values).pow(2)
 
                 value_loss = value_loss.mean()
                 dist_entropy = dist_entropy.mean()
