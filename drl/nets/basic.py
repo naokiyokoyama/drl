@@ -86,4 +86,5 @@ class MLPCritic(MLPBase):  # noqa
         all_sizes = [*hidden_sizes, 1]  # add one final layer with one output (value)
         super().__init__(input_shape, all_sizes, activation)
         # Remove the final activation layer
-        self.mlp = nn.Sequential(*list(self.mlp.children())[:-1])
+        layers = list(self.mlp.children())
+        self.mlp = nn.Sequential(*layers[:-1]) if len(layers) > 2 else layers[0]
