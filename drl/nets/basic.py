@@ -2,8 +2,8 @@ from functools import partial
 from typing import Tuple
 
 import numpy as np
-import torch.nn as nn
 import torch
+import torch.nn as nn
 
 from drl.utils.common import initialized_linear
 from drl.utils.registry import drl_registry

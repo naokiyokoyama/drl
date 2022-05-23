@@ -1,9 +1,8 @@
 import argparse
+import os.path as osp
 from typing import Union
 
 import numpy as np
-import os.path as osp
-
 import torch
 from torch import nn
 from yacs.config import CfgNode as CN

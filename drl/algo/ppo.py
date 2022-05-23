@@ -3,9 +3,9 @@ from typing import Dict
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from drl.utils.registry import drl_registry
 from torch import Tensor
 
+from drl.utils.registry import drl_registry
 from drl.utils.rollout_storage import RolloutStorage
 
 EPS_PPO = 1e-5

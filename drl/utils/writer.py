@@ -1,5 +1,5 @@
-import shutil
 import os.path as osp
+import shutil
 
 from torch.utils.tensorboard import SummaryWriter
 
