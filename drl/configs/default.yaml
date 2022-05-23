@@ -37,8 +37,9 @@ RL:
     num_mini_batch: 4
     value_loss_coef: 2.0
     entropy_coef: 0.000
+    truncate_grads: False
     lr: 3.0e-4
-    eps: 1.0e-5
+    eps: 1.0e-8
     max_grad_norm: 1.0
     num_steps: 16
     use_linear_clip_decay: False

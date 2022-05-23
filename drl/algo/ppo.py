@@ -23,6 +23,7 @@ class PPO(nn.Module):
         entropy_coef,
         lr=None,
         eps=None,
+        truncate_grads=False,
         max_grad_norm=None,
         use_clipped_value_loss=True,
         use_normalized_advantage=True,
@@ -40,6 +41,7 @@ class PPO(nn.Module):
         self.entropy_coef = entropy_coef
 
         self.use_normalized_advantage = use_normalized_advantage
+        self.truncate_grads = truncate_grads
         self.max_grad_norm = max_grad_norm
         self.use_clipped_value_loss = use_clipped_value_loss
 
@@ -106,9 +108,10 @@ class PPO(nn.Module):
                     + action_loss
                     - dist_entropy * self.entropy_coef
                 ).backward()
-                nn.utils.clip_grad_norm_(
-                    self.actor_critic.parameters(), self.max_grad_norm
-                )
+                if self.truncate_grads:
+                    nn.utils.clip_grad_norm_(
+                        self.actor_critic.parameters(), self.max_grad_norm
+                    )
                 self.optimizer.step()
 
                 for param_group in self.optimizer.param_groups:
@@ -145,6 +148,7 @@ class PPO(nn.Module):
             config.RL.PPO.entropy_coef,
             lr=config.RL.PPO.lr,
             eps=config.RL.PPO.eps,
+            truncate_grads=config.RL.PPO.truncate_grads,
             max_grad_norm=config.RL.PPO.max_grad_norm,
             use_clipped_value_loss=config.RL.PPO.use_clipped_value_loss,
             use_normalized_advantage=config.RL.PPO.use_normalized_advantage,
