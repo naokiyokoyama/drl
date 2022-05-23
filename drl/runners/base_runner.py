@@ -30,8 +30,17 @@ class BaseRunner:
         self.update_idx = 0
         self.step_idx = 0
         self.max_num_updates = None
-        self.actor_critic = None
         self.write_data = {}
+
+        """ Create actor-critic """
+        actor_critic_cls = drl_registry.get_actor_critic(config.ACTOR_CRITIC.name)
+        self.actor_critic = actor_critic_cls.from_config(
+            config, self.envs.observation_space, self.envs.action_space
+        )
+        self.actor_critic.to(self.device)
+        if config.USE_TORCHSCRIPT:
+            self.actor_critic.convert_to_torchscript()
+        print("Actor-critic architecture:\n", self.actor_critic)
 
     def train(self):
         observations = self.init_train()

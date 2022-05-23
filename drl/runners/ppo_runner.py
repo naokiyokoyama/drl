@@ -11,16 +11,6 @@ class PPORunner(BaseRunner):
     def __init__(self, config, envs=None):
         super().__init__(config, envs)
 
-        """ Create actor-critic """
-        actor_critic_cls = drl_registry.get_actor_critic(config.ACTOR_CRITIC.name)
-        self.actor_critic = actor_critic_cls.from_config(
-            config, self.envs.observation_space, self.envs.action_space
-        )
-        self.actor_critic.to(self.device)
-        if config.USE_TORCHSCRIPT:
-            self.actor_critic.convert_to_torchscript()
-        print("Actor-critic architecture:\n", self.actor_critic)
-
         # Training-only attributes
         self.ppo = None
         self.rollouts = None  # initialize during training

@@ -146,4 +146,6 @@ class PPO(nn.Module):
             lr=config.RL.PPO.lr,
             eps=config.RL.PPO.eps,
             max_grad_norm=config.RL.PPO.max_grad_norm,
+            use_clipped_value_loss=config.RL.PPO.use_clipped_value_loss,
+            use_normalized_advantage=config.RL.PPO.use_normalized_advantage,
         )
