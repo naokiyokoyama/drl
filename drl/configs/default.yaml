@@ -2,9 +2,9 @@ RUNNER:
   name: "PPORunner"
 ENVS_NAME: ""
 NUM_ENVIRONMENTS: 1
-NUM_UPDATES: 1000
+NUM_UPDATES: 500
 CUDA: True
-USE_TORCHSCRIPT: True
+USE_TORCHSCRIPT: False
 TENSORBOARD_DIR: "tb"
 ERASE_EXISTING_TB: True
 ACTOR_CRITIC:
@@ -15,9 +15,9 @@ ACTOR_CRITIC:
     activation: "elu"
   critic:
     name: "MLPCritic"
-    hidden_sizes: [256, 128, 64]
+    hidden_sizes: []
     activation: "elu"
-    is_head: False
+    is_head: True
   action_distribution:
     name: "GaussianActDist"
     min_sigma: 1.0e-6
@@ -42,6 +42,8 @@ RL:
     max_grad_norm: 1.0
     num_steps: 16
     use_linear_clip_decay: False
+    use_clipped_value_loss: False
+    use_normalized_advantage: True
 
   use_gae: True
   gamma: 0.99
