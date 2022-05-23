@@ -1,11 +1,14 @@
 from abc import ABC
 
+import numpy as np
 import torch
 from torch import Size, Tensor
 from torch import nn as nn
 
 from drl.utils.common import initialized_linear
 from drl.utils.registry import drl_registry
+
+HALF_LOG_2PI = 0.5 * np.log(2.0 * np.pi)
 
 
 class CustomCategorical(torch.distributions.Categorical):  # type: ignore
@@ -46,14 +49,33 @@ class CategoricalActDist(nn.Module):
 
 
 class CustomGaussian(torch.distributions.normal.Normal, ABC):
-    def sample(self, sample_shape: Size = torch.Size()) -> Tensor:
-        return super().sample(sample_shape)
+    def sample(self, *args, **kwargs) -> Tensor:
+        return normal_sample(self.loc, self.scale)
+
+    def rsample(self, sample_shape: Size = torch.Size()) -> Tensor:
+        return super().rsample(sample_shape)
 
     def log_probs(self, actions: Tensor) -> Tensor:
-        return super().log_prob(actions).sum(-1).unsqueeze(-1)
+        return compute_log_probs(actions, self.loc, self.scale, HALF_LOG_2PI)
 
     def deterministic_sample(self):
         return self.mean
+
+
+@torch.jit.script
+def normal_sample(mu, sigma):
+    return torch.normal(mu, sigma)
+
+
+@torch.jit.script
+def compute_log_probs(
+    actions: torch.Tensor, mu: torch.Tensor, sigma: torch.Tensor, half_log_2pi: float
+):
+    return -(
+        0.5 * (((actions - mu) / sigma) ** 2).sum(dim=-1)
+        + half_log_2pi * actions.size()[-1]
+        + torch.log(sigma).sum(dim=-1)
+    ).unsqueeze(-1)
 
 
 @drl_registry.register_act_dist

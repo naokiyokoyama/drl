@@ -136,26 +136,16 @@ class RolloutStorage:
     def compute_returns(self, next_value, use_gae, gamma, tau):
         if use_gae:
             self.buffers["value_preds"][self.current_rollout_step_idx] = next_value
-            gae = 0
-            for step in reversed(range(self.current_rollout_step_idx)):
-                delta = (
-                    self.buffers["rewards"][step]
-                    + gamma
-                    * self.buffers["value_preds"][step + 1]
-                    * self.buffers["not_dones"][step + 1]
-                    - self.buffers["value_preds"][step]
-                )
-                gae = delta + gamma * tau * gae * self.buffers["not_dones"][step + 1]
-                self.buffers["returns"][step] = gae + self.buffers["value_preds"][step]
-        else:
-            self.buffers["returns"][self.current_rollout_step_idx] = next_value
-            for step in reversed(range(self.current_rollout_step_idx)):
-                self.buffers["returns"][step] = (
-                    gamma
-                    * self.buffers["returns"][step + 1]
-                    * self.buffers["not_dones"][step + 1]
-                    + self.buffers["rewards"][step]
-                )
+        self.buffers["returns"] = compute_returns(
+            self.current_rollout_step_idx,
+            next_value,
+            self.buffers["rewards"],
+            self.buffers["value_preds"],
+            self.buffers["not_dones"],
+            use_gae,
+            gamma,
+            tau,
+        )
 
     def recurrent_generator(self, advantages, num_mini_batch) -> TensorDict:
         num_environments = advantages.size(1)
@@ -190,3 +180,34 @@ class RolloutStorage:
             batch["advantages"] = advantages[inds]
 
             yield batch.map(lambda v: v.flatten(0, 1))
+
+
+@torch.jit.script
+def compute_returns(
+    current_rollout_step_idx: int,
+    next_value: torch.Tensor,
+    rewards: torch.Tensor,
+    value_preds: torch.Tensor,
+    not_dones: torch.Tensor,
+    use_gae: bool,
+    gamma: float,
+    tau: float,
+):
+    returns = torch.zeros_like(rewards)
+    if use_gae:
+        gae = torch.zeros_like(rewards[0])
+        for step in range(current_rollout_step_idx - 1, -1, -1):
+            delta = (
+                rewards[step]
+                + gamma * value_preds[step + 1] * not_dones[step + 1]
+                - value_preds[step]
+            )
+            gae = delta + gamma * tau * gae * not_dones[step + 1]
+            returns[step] = gae + value_preds[step]
+    else:
+        returns[current_rollout_step_idx] = next_value
+        for step in range(current_rollout_step_idx - 1, -1, -1):
+            returns[step] = (
+                rewards[step] + gamma * returns[step + 1] * not_dones[step + 1]
+            )
+    return returns

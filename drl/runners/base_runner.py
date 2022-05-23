@@ -1,9 +1,10 @@
-import torch
+import time
 
-from drl.utils.registry import drl_registry
-from drl.utils.common import MeanReturns
+import torch
 import tqdm
 
+from drl.utils.common import MeanReturns
+from drl.utils.registry import drl_registry
 from drl.utils.writer import Writer
 
 
@@ -44,7 +45,9 @@ class BaseRunner:
 
     def train(self):
         observations = self.init_train()
+        frames_per_step = self.config.RL.PPO.num_steps * self.num_envs
         for _ in tqdm.trange(self.max_num_updates):
+            start_time = time.time()
             self.write_data = {}
             for step in range(self.config.RL.PPO.num_steps):
                 observations = self.step(observations)
@@ -52,6 +55,7 @@ class BaseRunner:
             self.write()
             self.update_idx += 1
             self.step_idx += self.config.RL.PPO.num_steps * self.num_envs
+            print(f"fps: {frames_per_step / (time.time() - start_time):.2f}")
 
     def init_train(self):
         self.max_num_updates = self.config.NUM_UPDATES
@@ -61,16 +65,14 @@ class BaseRunner:
         return observations
 
     def write(self):
-        if self.writer is None:
-            return
-        self.writer.add_multi_scalars(self.write_data, self.step_idx)
+        if self.writer is not None:
+            self.writer.add_multi_scalars(self.write_data, self.step_idx)
 
     def step(self, observations):
         raise NotImplementedError
 
     def update(self, observations):
         raise NotImplementedError
-
 
     @staticmethod
     def set_seed(seed):
