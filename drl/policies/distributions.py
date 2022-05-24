@@ -50,7 +50,7 @@ class CustomGaussian:
         self.mu = mu
         self.sigma = sigma
 
-    def sample(self, rsample: bool = True) -> Tensor:
+    def sample(self, rsample: bool = False) -> Tensor:
         if rsample:
             with torch.no_grad():
                 unit_normal_sample = torch.normal(
