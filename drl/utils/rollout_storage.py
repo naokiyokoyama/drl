@@ -88,6 +88,7 @@ class RolloutStorage:
         next_observations,
         next_dones,
         other,
+        advance=True
     ):
         if "actions" not in self.buffers:
             if isinstance(actions, np.ndarray):
@@ -125,6 +126,8 @@ class RolloutStorage:
                 data,
                 strict=False,
             )
+        if advance:
+            self.advance_rollout()
 
     def advance_rollout(self):
         self.current_rollout_step_idx += 1

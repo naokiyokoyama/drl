@@ -40,7 +40,6 @@ class PPOTrainer(BaseTrainer):
             next_dones=dones,
             other=other,
         )
-        self.rollouts.advance_rollout()
         return observations
 
     def update(self, observations):
