@@ -1,18 +1,16 @@
 import torch
 
 from drl.algo import PPO
-from drl.runners.base_runner import BaseRunner
+from drl.runners.base_runner import BaseTrainer
 from drl.utils.registry import drl_registry
 from drl.utils.rollout_storage import RolloutStorage
 
 
 @drl_registry.register_runner
-class PPORunner(BaseRunner):
+class PPOTrainer(BaseTrainer):
     def __init__(self, config, envs=None):
         super().__init__(config, envs)
-
-        # Training-only attributes
-        self.ppo = None
+        self.ppo = PPO.from_config(self.config, self.actor_critic)
         self.rollouts = None  # initialize during training
 
     def init_train(self):
@@ -20,11 +18,9 @@ class PPORunner(BaseRunner):
         self.rollouts = RolloutStorage(
             self.config.RL.PPO.num_steps, self.num_envs, self.device, observations
         )
-        self.ppo = PPO.from_config(self.config, self.actor_critic)
         return observations
 
     def step(self, observations):
-        # Sample actions
         with torch.no_grad():
             (
                 value,
@@ -33,14 +29,7 @@ class PPORunner(BaseRunner):
                 other,
             ) = self.actor_critic.act(observations)
 
-        # Observe reward and next obs
-        # TODO: support action transformation
-        observations, rewards, dones, infos = self.envs.step(actions)
-        observations = observations["obs"]
-
-        self.mean_returns.update(rewards, dones)
-
-        rewards *= self.config.RL.reward_scale
+        observations, rewards, dones, infos = self.step_envs(actions)
 
         self.rollouts.insert(
             next_observations=observations,
@@ -67,4 +56,3 @@ class PPORunner(BaseRunner):
 
         self.write_data.update(self.ppo.update(self.rollouts))
         self.write_data["rewards/step"] = self.mean_returns.mean()
-        print("mean_returns:", self.mean_returns.mean())

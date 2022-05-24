@@ -99,5 +99,13 @@ class Registry(metaclass=Singleton):
     def get_scheduler(cls, name: str) -> nn.Module:
         return cls._get_impl("scheduler", name)
 
+    @classmethod
+    def register_obs_preprocessor(cls, to_register=None, *, name: Optional[str] = None):
+        return cls._register_impl("obs_preprocessor", to_register, name)
+
+    @classmethod
+    def get_obs_preprocessor(cls, name: str) -> nn.Module:
+        return cls._get_impl("obs_preprocessor", name)
+
 
 drl_registry = Registry()

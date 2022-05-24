@@ -32,7 +32,7 @@ def construct_config(opts=None):
 
 def initialized_linear(in_features, out_features, gain, bias=0):
     layer = nn.Linear(in_features, out_features)
-    nn.init.orthogonal_(layer.weight, gain=gain)
+    # nn.init.orthogonal_(layer.weight, gain=gain)
     nn.init.constant_(layer.bias, bias)
 
     return layer

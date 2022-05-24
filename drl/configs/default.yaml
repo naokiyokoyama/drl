@@ -1,5 +1,5 @@
 RUNNER:
-  name: "PPORunner"
+  name: "PPOTrainer"
 ENVS_NAME: ""
 NUM_ENVIRONMENTS: 1
 NUM_UPDATES: 500
@@ -7,6 +7,7 @@ CUDA: True
 USE_TORCHSCRIPT: False
 TENSORBOARD_DIR: "tb"
 ERASE_EXISTING_TB: True
+OBS_PREPROCESSOR: "isaac_get_obs"
 ACTOR_CRITIC:
   name: "ActorCritic"
   net:
