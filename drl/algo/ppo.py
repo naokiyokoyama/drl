@@ -139,13 +139,13 @@ class PPO(nn.Module):
     def from_config(cls, config, actor_critic):
         scheduler_cls = drl_registry.get_scheduler(config.RL.scheduler.name)
         return cls(
-            actor_critic,
-            scheduler_cls.from_config(config),
-            config.RL.PPO.clip_param,
-            config.RL.PPO.ppo_epoch,
-            config.RL.PPO.num_mini_batch,
-            config.RL.PPO.value_loss_coef,
-            config.RL.PPO.entropy_coef,
+            actor_critic=actor_critic,
+            scheduler=scheduler_cls.from_config(config),
+            clip_param=config.RL.PPO.clip_param,
+            ppo_epoch=config.RL.PPO.ppo_epoch,
+            num_mini_batch=config.RL.PPO.num_mini_batch,
+            value_loss_coef=config.RL.PPO.value_loss_coef,
+            entropy_coef=config.RL.PPO.entropy_coef,
             lr=config.RL.PPO.lr,
             eps=config.RL.PPO.eps,
             truncate_grads=config.RL.PPO.truncate_grads,
