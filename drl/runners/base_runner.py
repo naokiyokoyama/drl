@@ -52,19 +52,19 @@ class BaseTrainer(BaseRunner):
 
     def train(self):
         observations = self.init_train()
-        frames_per_step = self.config.RL.PPO.num_steps * self.num_envs
+        frames_per_update = self.config.RL.PPO.num_steps * self.num_envs
         for _ in tqdm.trange(self.config.NUM_UPDATES):
             start_time = time.time()
             self.write_data = {}
             for step in range(self.config.RL.PPO.num_steps):
                 observations = self.step(observations)
             self.update(observations)
-            self.write_data["rewards/step"] = self.mean_returns.mean()
-            self.write()
+            mean_return = self.mean_returns.mean()
+            self.write(mean_return)
             self.update_idx += 1
-            self.step_idx += self.config.RL.PPO.num_steps * self.num_envs
-            print("mean_returns:", self.mean_returns.mean())
-            print(f"fps: {frames_per_step / (time.time() - start_time):.2f}")
+            self.step_idx += frames_per_update
+            print("mean_returns:", mean_return)
+            print(f"fps: {frames_per_update / (time.time() - start_time):.2f}")
 
     def init_train(self):
         observations = self.envs.reset()["obs"]
@@ -79,8 +79,9 @@ class BaseTrainer(BaseRunner):
         rewards *= self.config.RL.reward_scale
         return observations, rewards, dones, infos
 
-    def write(self):
+    def write(self, mean_return):
         if self.writer is not None:
+            self.write_data["rewards/step"] = mean_return
             self.writer.add_multi_scalars(self.write_data, self.step_idx)
 
     def step(self, observations):
