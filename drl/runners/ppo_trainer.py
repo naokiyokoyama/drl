@@ -53,6 +53,4 @@ class PPOTrainer(BaseTrainer):
             self.config.RL.gamma,
             self.config.RL.tau,
         )
-
         self.write_data.update(self.ppo.update(self.rollouts))
-        self.write_data["rewards/step"] = self.mean_returns.mean()

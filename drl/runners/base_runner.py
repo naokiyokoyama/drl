@@ -59,6 +59,7 @@ class BaseTrainer(BaseRunner):
             for step in range(self.config.RL.PPO.num_steps):
                 observations = self.step(observations)
             self.update(observations)
+            self.write_data["rewards/step"] = self.mean_returns.mean()
             self.write()
             self.update_idx += 1
             self.step_idx += self.config.RL.PPO.num_steps * self.num_envs
