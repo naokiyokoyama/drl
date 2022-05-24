@@ -46,7 +46,7 @@ class CategoricalActDist(nn.Module):
 
 @torch.jit.script
 class CustomGaussian:
-    def __init__(self, mu, sigma):
+    def __init__(self, mu: Tensor, sigma: Tensor):
         self.mu = mu
         self.sigma = sigma
 
