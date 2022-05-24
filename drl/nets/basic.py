@@ -1,11 +1,9 @@
 from functools import partial
 from typing import Tuple
 
-import numpy as np
 import torch
 import torch.nn as nn
 
-from drl.utils.common import initialized_linear
 from drl.utils.registry import drl_registry
 
 
@@ -48,9 +46,7 @@ def construct_mlp_base(input_size, hidden_sizes, activation="relu"):
     layers = []
     prev_size = input_size
     for out_size in hidden_sizes:
-        layers.append(
-            initialized_linear(int(prev_size), int(out_size), gain=np.sqrt(2))
-        )
+        layers.append(nn.Linear(int(prev_size), int(out_size)))
         layers.append(activation_layer())
         prev_size = out_size
     mlp = nn.Sequential(*layers) if len(layers) > 1 else layers[0]

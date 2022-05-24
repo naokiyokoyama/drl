@@ -4,7 +4,6 @@ from typing import Union
 
 import numpy as np
 import torch
-from torch import nn
 from yacs.config import CfgNode as CN
 
 UTILS_DIR = osp.dirname(osp.abspath(__file__))
@@ -28,14 +27,6 @@ def construct_config(opts=None):
     config.merge_from_list(opts)
 
     return config
-
-
-def initialized_linear(in_features, out_features, gain, bias=0):
-    layer = nn.Linear(in_features, out_features)
-    # nn.init.orthogonal_(layer.weight, gain=gain)
-    nn.init.constant_(layer.bias, bias)
-
-    return layer
 
 
 class MeanReturns:

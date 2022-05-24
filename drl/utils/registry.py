@@ -107,5 +107,13 @@ class Registry(metaclass=Singleton):
     def get_obs_preprocessor(cls, name: str) -> nn.Module:
         return cls._get_impl("obs_preprocessor", name)
 
+    @classmethod
+    def register_init_layer(cls, to_register=None, *, name: Optional[str] = None):
+        return cls._register_impl("init_layer", to_register, name)
+
+    @classmethod
+    def get_init_layer(cls, name: str) -> nn.Module:
+        return cls._get_impl("init_layer", name)
+
 
 drl_registry = Registry()

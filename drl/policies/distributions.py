@@ -5,7 +5,6 @@ import torch
 from torch import Size, Tensor
 from torch import nn as nn
 
-from drl.utils.common import initialized_linear
 from drl.utils.registry import drl_registry
 
 HALF_LOG_2PI = 0.5 * np.log(2.0 * np.pi)
@@ -34,7 +33,7 @@ class CategoricalActDist(nn.Module):
 
     def __init__(self, num_inputs: int, num_outputs: int) -> None:
         super().__init__()
-        self.linear = initialized_linear(num_inputs, num_outputs, gain=0.01)
+        self.linear = nn.Linear(num_inputs, num_outputs)
 
     def forward(self, x: Tensor) -> CustomCategorical:
         x = self.linear(x)
@@ -97,14 +96,14 @@ class GaussianActDist(nn.Module):
         self.sigma_as_params = sigma_as_params
         self.clip_sigma = clip_sigma
 
-        self.mu = initialized_linear(num_inputs, num_outputs, gain=0.01)
+        self.mu = nn.Linear(num_inputs, num_outputs)
         if sigma_as_params:
             self.sigma = nn.Parameter(
                 torch.zeros(num_outputs, requires_grad=True, dtype=torch.float32)
             )
             nn.init.constant_(self.sigma, val=0)
         else:
-            self.sigma = initialized_linear(num_inputs, num_outputs, gain=0.01)
+            self.sigma = nn.Linear(num_inputs, num_outputs)
 
         self.output_mu_sigma = None
 

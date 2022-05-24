@@ -84,6 +84,8 @@ class BaseTrainer(BaseRunner):
             print(f"fps: {frames_per_update / (time.time() - start_time):.2f}")
 
     def init_train(self):
+        for i in self.config.INIT_LAYERS:
+            drl_registry.get_init_layer(i)(self.actor_critic)
         observations = self.envs.reset()["obs"]
         if self.num_envs is None:
             self.num_envs = observations.shape[0]
