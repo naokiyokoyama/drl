@@ -1,13 +1,10 @@
-from abc import ABC
+import math
 
-import numpy as np
 import torch
 from torch import Size, Tensor
 from torch import nn as nn
 
 from drl.utils.registry import drl_registry
-
-HALF_LOG_2PI = 0.5 * np.log(2.0 * np.pi)
 
 
 class CustomCategorical(torch.distributions.Categorical):  # type: ignore
@@ -47,34 +44,36 @@ class CategoricalActDist(nn.Module):
         )
 
 
-class CustomGaussian(torch.distributions.normal.Normal, ABC):
-    def sample(self, *args, **kwargs) -> Tensor:
-        return normal_sample(self.loc, self.scale)
+@torch.jit.script
+class CustomGaussian:
+    def __init__(self, mu, sigma):
+        self.mu = mu
+        self.sigma = sigma
 
-    def rsample(self, sample_shape: Size = torch.Size()) -> Tensor:
-        return super().rsample(sample_shape)
+    def sample(self, rsample: bool = True) -> Tensor:
+        if rsample:
+            with torch.no_grad():
+                unit_normal_sample = torch.normal(
+                    torch.zeros_like(self.mu), torch.ones_like(self.sigma)
+                )
+            sample = self.mu + unit_normal_sample * self.sigma
+        else:
+            with torch.no_grad():
+                sample = torch.normal(self.mu, self.sigma)
+        return sample
 
     def log_probs(self, actions: Tensor) -> Tensor:
-        return compute_log_probs(actions, self.loc, self.scale, HALF_LOG_2PI)
+        return -(
+            0.5 * (((actions - self.mu) / self.sigma) ** 2).sum(dim=-1)
+            + 0.5 * math.log(2 * math.pi) * actions.size()[-1]
+            + torch.log(self.sigma).sum(dim=-1)
+        ).unsqueeze(-1)
 
     def deterministic_sample(self):
-        return self.mean
+        return self.mu
 
-
-@torch.jit.script
-def normal_sample(mu, sigma):
-    return torch.normal(mu, sigma)
-
-
-@torch.jit.script
-def compute_log_probs(
-    actions: torch.Tensor, mu: torch.Tensor, sigma: torch.Tensor, half_log_2pi: float
-):
-    return -(
-        0.5 * (((actions - mu) / sigma) ** 2).sum(dim=-1)
-        + half_log_2pi * actions.size()[-1]
-        + torch.log(sigma).sum(dim=-1)
-    ).unsqueeze(-1)
+    def entropy(self):
+        return 0.5 + 0.5 * math.log(2 * math.pi) + torch.log(self.sigma)
 
 
 @drl_registry.register_act_dist
