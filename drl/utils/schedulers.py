@@ -19,8 +19,8 @@ class IdentityScheduler(RLScheduler):
     def from_config(cls, *args, **kwargs):
         return cls()
 
-
-def policy_kl(mu, sigma, prev_mu, prev_sigma, reduce=True):
+@torch.jit.script
+def policy_kl(mu, sigma, prev_mu, prev_sigma, reduce: bool=True):
     mu, sigma, prev_mu, prev_sigma = [
         i.detach() for i in [mu, sigma, prev_mu, prev_sigma]
     ]
