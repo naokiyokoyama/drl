@@ -18,12 +18,14 @@ def get_default_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def construct_config(opts=None):
+def construct_config(config_path=None, opts=None):
+    if config_path is None:
+        config_path = DEFAULT_CONFIG_FILE
     if opts is None:
         opts = []
     config = CN()
     config.set_new_allowed(True)
-    config.merge_from_file(DEFAULT_CONFIG_FILE)
+    config.merge_from_file(config_path)
     config.merge_from_list(opts)
 
     return config
