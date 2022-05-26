@@ -68,12 +68,12 @@ class BaseTrainer(BaseRunner):
 
     def train(self):
         observations = self.init_train()
-        frames_per_update = self.config.RL.PPO.num_steps * self.num_envs
+        frames_per_update = self.config.RL.num_steps * self.num_envs
         step_idx = 0
         for _ in tqdm.trange(self.config.NUM_UPDATES):
             start_time = time.time()
             self.write_data = {}
-            for step in range(self.config.RL.PPO.num_steps):
+            for step in range(self.config.RL.num_steps):
                 observations = self.step(observations)
             self.update(observations)
             self.write_data["rewards/step"] = mean_return = self.mean_returns.mean()

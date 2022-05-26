@@ -15,8 +15,8 @@ class PPOTrainer(BaseTrainer):
 
     def init_train(self):
         observations = super().init_train()
-        self.rollouts = RolloutStorage(
-            self.config.RL.PPO.num_steps, self.num_envs, self.device, observations
+        self.rollouts = RolloutStorage.from_config(
+            self.config, self.num_envs, self.device, observations
         )
         return observations
 
@@ -30,6 +30,7 @@ class PPOTrainer(BaseTrainer):
             ) = self.actor_critic.act(observations)
 
         observations, rewards, dones, infos = self.step_envs(actions)
+        other.update(infos)
 
         self.rollouts.insert(
             next_observations=observations,
@@ -45,11 +46,5 @@ class PPOTrainer(BaseTrainer):
     def update(self, observations):
         with torch.no_grad():
             next_value = self.actor_critic.get_value(observations)
-
-        self.rollouts.compute_returns(
-            next_value,
-            self.config.RL.use_gae,
-            self.config.RL.gamma,
-            self.config.RL.tau,
-        )
+        self.rollouts.compute_returns(next_value)
         self.write_data.update(self.ppo.update(self.rollouts))

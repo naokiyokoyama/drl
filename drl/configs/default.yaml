@@ -44,14 +44,15 @@ RL:
     lr: 3.0e-4
     eps: 1.0e-8
     max_grad_norm: 1.0
-    num_steps: 16
     use_linear_clip_decay: False
     use_clipped_value_loss: False
     use_normalized_advantage: True
 
+  num_steps: 16  # rollout length
   use_gae: True
   gamma: 0.99
   tau: 0.95
+  value_bootstrap: True
   use_linear_lr_decay: False
   reward_window_size: 50
   use_normalized_advantage: True
