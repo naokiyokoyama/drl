@@ -24,12 +24,8 @@ class RolloutStorage:
         self._num_envs = num_envs
         self.device = device
 
-        # Need to wait until first sample to define the shapes of these sub-buffers
-        # self.buffers["observations"] = None
-        # self.buffers["actions"] = None
-
         # We can definitively define the shapes of these sub-buffers without a sample
-        for i in ["rewards", "value_preds", "returns", "action_log_probs"]:
+        for i in ["rewards", "value_preds", "returns"]:
             self.buffers[i] = torch.zeros(num_steps + 1, num_envs, 1, device=device)
         self.buffers["not_dones"] = torch.zeros(
             num_steps + 1, num_envs, 1, device=device, dtype=torch.bool
@@ -90,18 +86,6 @@ class RolloutStorage:
         other,
         advance=True,
     ):
-        if "actions" not in self.buffers:
-            if isinstance(actions, np.ndarray):
-                data_type = torch.from_numpy(actions).dtype
-            else:
-                data_type = actions.dtype
-            self.buffers["actions"] = torch.zeros(
-                self.num_steps + 1,
-                self._num_envs,
-                *actions.shape[1:],
-                dtype=data_type,
-                device=self.device,
-            )
         # Automatically try to reshape rewards if they seem squeezed
         current_step = dict(
             actions=actions,
@@ -115,10 +99,11 @@ class RolloutStorage:
             next_not_dones = next_not_dones.unsqueeze(-1)
         next_step = dict(observations=next_observations, not_dones=next_not_dones)
 
-        # Add new entries from other dict if they don't exist already
-        for k, v in other.items():
-            if k not in self.buffers:
-                self.insert_initial_data(k, v)
+        # Add new entries from dicts if they don't exist already within buffers
+        for d in [current_step, next_step, other]:
+            for k in d.keys():
+                if k not in self.buffers:
+                    self.insert_initial_data(k, d[k])
 
         for offset, data in [(0, current_step), (1, next_step)]:
             self.buffers.set(

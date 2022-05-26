@@ -62,12 +62,15 @@ class CustomGaussian:
                 sample = torch.normal(self.mu, self.sigma)
         return sample
 
-    def log_probs(self, actions: Tensor) -> Tensor:
-        return -(
-            0.5 * (((actions - self.mu) / self.sigma) ** 2).sum(dim=-1)
-            + 0.5 * math.log(2 * math.pi) * actions.size()[-1]
-            + torch.log(self.sigma).sum(dim=-1)
-        ).unsqueeze(-1)
+    def log_probs(self, actions: Tensor, sum_reduce: bool = True) -> Tensor:
+        log_probs = (
+            -(actions - self.mu) ** 2 / (2 * self.sigma**2)
+            - math.log(math.sqrt(2 * math.pi))
+            - self.sigma.log()
+        )
+        if sum_reduce:
+            return log_probs.sum(1, keepdim=True)
+        return log_probs
 
     def deterministic_sample(self):
         return self.mu
