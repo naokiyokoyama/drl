@@ -14,11 +14,19 @@ class BaseRunner:
     """Base class for Trainers and Evaluators"""
 
     def __init__(self, config, envs=None):
-        self.config = config
-
         torch.set_num_threads(1)
+        self.config = config
         self.set_seed(config.SEED)
         self.device = torch.device("cuda:0" if config.CUDA else "cpu")
+        if self.config.TENSORBOARD_DIR == "":
+            self.writer = None
+        else:
+            self.writer = Writer.from_config(self.config)
+        self.write_data = {}
+
+        self.preprocess_observations = drl_registry.get_obs_preprocessor(
+            config.OBS_PREPROCESSOR
+        )
 
         if envs is None:
             self.envs = drl_registry.get_envs(config.ENVS_NAME)
@@ -26,12 +34,6 @@ class BaseRunner:
         else:
             self.envs = envs
             self.num_envs = None  # define later in init_train or init_eval
-
-        if self.config.TENSORBOARD_DIR == "":
-            self.writer = None
-        else:
-            self.writer = Writer.from_config(self.config)
-        self.write_data = {}
 
         """ Create actor-critic """
         actor_critic_cls = drl_registry.get_actor_critic(config.ACTOR_CRITIC.name)
@@ -42,10 +44,6 @@ class BaseRunner:
         if config.USE_TORCHSCRIPT:
             self.actor_critic.convert_to_torchscript()
         print("Actor-critic architecture:\n", self.actor_critic)
-
-        self.preprocess_observations = drl_registry.get_obs_preprocessor(
-            config.OBS_PREPROCESSOR
-        )
 
     def write(self, idx):
         if self.writer is not None:
