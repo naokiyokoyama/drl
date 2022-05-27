@@ -8,17 +8,14 @@ from drl.utils.rollout_storage import RolloutStorage
 
 @drl_registry.register_runner
 class PPOTrainer(BaseTrainer):
+    algo_cls = PPO
+
     def __init__(self, config, envs=None):
         super().__init__(config, envs)
-        self.ppo = PPO.from_config(self.config, self.actor_critic)
-        self.rollouts = None  # initialize during training
-
-    def init_train(self):
-        observations = super().init_train()
+        self.algo = self.algo_cls.from_config(self.config, self.actor_critic)
         self.rollouts = RolloutStorage.from_config(
-            self.config, self.num_envs, self.device, observations
+            self.config, self.num_envs, self.device, self.initial_observations
         )
-        return observations
 
     def step(self, observations):
         with torch.no_grad():
@@ -47,4 +44,4 @@ class PPOTrainer(BaseTrainer):
         with torch.no_grad():
             next_value = self.actor_critic.get_value(observations)
         self.rollouts.compute_returns(next_value)
-        self.write_data.update(self.ppo.update(self.rollouts))
+        self.write_data.update(self.algo.update(self.rollouts))

@@ -34,16 +34,28 @@ class BaseRunner:
         else:
             self.envs = envs
             self.num_envs = None  # define later in init_train or init_eval
+        self.initial_observations = self.preprocess_observations(self.envs.reset())
+        if self.num_envs is None:
+            self.num_envs = self.initial_observations.shape[0]
 
+        self.actor_critic = self.load_actor_critic()
+
+    def load_actor_critic(self):
         """ Create actor-critic """
-        actor_critic_cls = drl_registry.get_actor_critic(config.ACTOR_CRITIC.name)
-        self.actor_critic = actor_critic_cls.from_config(
-            config, self.envs.observation_space, self.envs.action_space
+        actor_critic_cls = drl_registry.get_actor_critic(
+            self.config.ACTOR_CRITIC.name)
+        actor_critic = self.instantiate_actor_critic(actor_critic_cls)
+        actor_critic.to(self.device)
+        if self.config.USE_TORCHSCRIPT:
+            actor_critic.convert_to_torchscript()
+        print("Actor-critic architecture:\n", actor_critic)
+        # TODO: Support loading pre-trained weights
+        return actor_critic
+
+    def instantiate_actor_critic(self, actor_critic_cls):
+        return actor_critic_cls.from_config(
+            self.config, self.envs.observation_space, self.envs.action_space
         )
-        self.actor_critic.to(self.device)
-        if config.USE_TORCHSCRIPT:
-            self.actor_critic.convert_to_torchscript()
-        print("Actor-critic architecture:\n", self.actor_critic)
 
     def write(self, idx):
         if self.writer is not None:
@@ -63,9 +75,11 @@ class BaseTrainer(BaseRunner):
         super().__init__(config, envs)
         self.mean_returns = MeanReturns()
         self.update_idx = 0
+        for i in self.config.INIT_LAYERS:
+            drl_registry.get_init_layer(i)(self.actor_critic)
 
     def train(self):
-        observations = self.init_train()
+        observations = self.initial_observations
         frames_per_update = self.config.RL.num_steps * self.num_envs
         step_idx = 0
         for _ in tqdm.trange(self.config.NUM_UPDATES):
@@ -80,14 +94,6 @@ class BaseTrainer(BaseRunner):
             step_idx += frames_per_update
             print("mean_returns:", mean_return)
             print(f"fps: {frames_per_update / (time.time() - start_time):.2f}")
-
-    def init_train(self):
-        for i in self.config.INIT_LAYERS:
-            drl_registry.get_init_layer(i)(self.actor_critic)
-        observations = self.envs.reset()["obs"]
-        if self.num_envs is None:
-            self.num_envs = observations.shape[0]
-        return observations
 
     def step_envs(self, actions):
         observations, rewards, dones, infos = self.envs.step(actions)
