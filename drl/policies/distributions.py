@@ -56,15 +56,14 @@ class CustomGaussian:
                 unit_normal_sample = torch.normal(
                     torch.zeros_like(self.mu), torch.ones_like(self.sigma)
                 )
-            sample = self.mu + unit_normal_sample * self.sigma
+            return self.mu + unit_normal_sample * self.sigma
         else:
             with torch.no_grad():
-                sample = torch.normal(self.mu, self.sigma)
-        return sample
+                return torch.normal(self.mu, self.sigma)
 
     def log_probs(self, actions: Tensor, sum_reduce: bool = True) -> Tensor:
         log_probs = (
-            -(actions - self.mu) ** 2 / (2 * self.sigma**2)
+            -((actions - self.mu) ** 2) / (2 * self.sigma**2)
             - math.log(math.sqrt(2 * math.pi))
             - self.sigma.log()
         )
@@ -93,6 +92,7 @@ class GaussianActDist(nn.Module):
         clip_sigma: bool = True,
     ) -> None:
         super().__init__()
+        self.num_actions = num_outputs
         self.min_sigma = min_sigma
         self.max_sigma = max_sigma
         self.sigma_as_params = sigma_as_params

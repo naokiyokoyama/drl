@@ -41,9 +41,8 @@ class BaseRunner:
         self.actor_critic = self.load_actor_critic()
 
     def load_actor_critic(self):
-        """ Create actor-critic """
-        actor_critic_cls = drl_registry.get_actor_critic(
-            self.config.ACTOR_CRITIC.name)
+        """Create actor-critic"""
+        actor_critic_cls = drl_registry.get_actor_critic(self.config.ACTOR_CRITIC.name)
         actor_critic = self.instantiate_actor_critic(actor_critic_cls)
         actor_critic.to(self.device)
         if self.config.USE_TORCHSCRIPT:

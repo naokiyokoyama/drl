@@ -5,7 +5,7 @@
 # LICENSE file in the root directory of this source tree.
 
 import warnings
-from typing import Union, Optional
+from typing import Optional, Union
 
 import numpy as np
 import torch
@@ -165,7 +165,7 @@ class RolloutStorage:
             self.gamma,
             self.tau,
             self.value_bootstrap,
-            self.buffers.get("time_outs", None)
+            self.buffers.get("time_outs", None),
         )
 
     def recurrent_generator(self, advantages, num_mini_batch) -> TensorDict:

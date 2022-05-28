@@ -23,9 +23,9 @@ class ActorCritic(nn.Module):
         self.critic = critic
         self.critic_is_head = critic_is_head
 
-    def act(self, observations, deterministic=False):
+    def act(self, observations, deterministic=False, rsample=False):
         value, dist, other = self._process_observations(observations)
-        actions = dist.deterministic_sample() if deterministic else dist.sample()
+        actions = dist.deterministic_sample() if deterministic else dist.sample(rsample)
         action_log_probs = dist.log_probs(actions)
 
         return value, actions, action_log_probs, other
@@ -72,7 +72,9 @@ class ActorCritic(nn.Module):
         self.critic.convert_to_torchscript()
 
     @classmethod
-    def from_config(cls, config, obs_space, action_space, critic_obs_space=None):
+    def from_config(
+        cls, config, obs_space, action_space, critic_obs_space=None, **kwargs
+    ):
         """Observation and actions spaces needed to define the sizes of network inputs
         and outputs."""
         ac_cfg = config.ACTOR_CRITIC
@@ -99,6 +101,7 @@ class ActorCritic(nn.Module):
                 config, net.output_shape[0], action_space.shape[0]
             ),
             critic_is_head=ac_cfg.critic.is_head,
+            **kwargs,
         )
 
     def forward(self, x):

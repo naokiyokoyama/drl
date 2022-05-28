@@ -1,7 +1,9 @@
+from collections import defaultdict
 from typing import Dict
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import torch.optim as optim
 from torch import Tensor
 
@@ -44,10 +46,27 @@ class PPO(nn.Module):
         self.truncate_grads = truncate_grads
         self.max_grad_norm = max_grad_norm
         self.use_clipped_value_loss = use_clipped_value_loss
+        self.optimizer = self.setup_optimizer(lr, eps)
+        self.losses_data = defaultdict(float)
 
-        self.optimizer = optim.Adam(actor_critic.parameters(), lr=lr, eps=eps)
+    def setup_optimizer(self, lr, eps):
+        optimizer = optim.Adam(self.actor_critic.parameters(), lr=lr, eps=eps)
         print("\nPPO Optimizer:")
-        print(self.optimizer)
+        print(optimizer)
+        return optimizer
+
+    def update(self, rollouts: RolloutStorage) -> Dict:
+        advantages = self.get_advantages(rollouts)
+        self.losses_data = defaultdict(float)
+        if self.actor_critic.is_recurrent:
+            generator = rollouts.recurrent_generator
+        else:
+            generator = rollouts.feed_forward_generator
+        for epoch in range(self.ppo_epoch):
+            for idx, batch in enumerate(generator(advantages, self.num_mini_batch)):
+                self.single_update(epoch, idx, batch)
+        rollouts.after_update()
+        return self.get_losses_data()
 
     def get_advantages(self, rollouts: RolloutStorage) -> Tensor:
         advantages = (
@@ -57,83 +76,62 @@ class PPO(nn.Module):
             return (advantages - advantages.mean()) / (advantages.std() + EPS_PPO)
         return advantages
 
-    def update(self, rollouts: RolloutStorage) -> Dict:
-        advantages = self.get_advantages(rollouts)
+    def single_update(self, epoch, idx, batch):
+        (
+            values,
+            action_log_probs,
+            dist_entropy,
+        ) = self.actor_critic.evaluate_actions(batch["observations"], batch["actions"])
 
-        value_loss_epoch = 0
-        action_loss_epoch = 0
-        dist_entropy_epoch = 0
+        # Action loss
+        action_loss = self.get_action_loss(action_log_probs, batch, batch["advantages"])
 
-        for epoch in range(self.ppo_epoch):
-            if self.actor_critic.is_recurrent:
-                generator = rollouts.recurrent_generator
-            else:
-                generator = rollouts.feed_forward_generator
+        # Value loss
+        if self.use_clipped_value_loss:
+            value_pred_clipped = batch["value_preds"] + (
+                values - batch["value_preds"]
+            ).clamp(-self.clip_param, self.clip_param)
+            value_losses = (values - batch["returns"]).pow(2)
+            value_losses_clipped = (value_pred_clipped - batch["returns"]).pow(2)
+            value_loss = torch.max(value_losses, value_losses_clipped).mean()
+        else:
+            value_loss = F.mse_loss(values, batch["returns"])
 
-            for idx, batch in enumerate(generator(advantages, self.num_mini_batch)):
-                (
-                    values,
-                    action_log_probs,
-                    dist_entropy,
-                ) = self.actor_critic.evaluate_actions(
-                    batch["observations"], batch["actions"]
-                )
+        # Entropy loss
+        entropy_loss = dist_entropy.mean()
 
-                ratio = torch.exp(action_log_probs - batch["action_log_probs"])
-                surr1 = ratio * batch["advantages"]
-                surr2 = (
-                    torch.clamp(ratio, 1.0 - self.clip_param, 1.0 + self.clip_param)
-                    * batch["advantages"]
-                )
-                action_loss = -torch.min(surr1, surr2).mean()
+        self.optimizer.zero_grad()
+        (
+            0.5 * value_loss * self.value_loss_coef
+            + action_loss
+            - entropy_loss * self.entropy_coef
+        ).backward()
+        if self.truncate_grads:
+            nn.utils.clip_grad_norm_(self.actor_critic.parameters(), self.max_grad_norm)
+        self.optimizer.step()
 
-                if self.use_clipped_value_loss:
-                    value_pred_clipped = batch["value_preds"] + (
-                        values - batch["value_preds"]
-                    ).clamp(-self.clip_param, self.clip_param)
-                    value_losses = (values - batch["returns"]).pow(2)
-                    value_losses_clipped = (value_pred_clipped - batch["returns"]).pow(
-                        2
-                    )
-                    value_loss = torch.max(value_losses, value_losses_clipped)
-                else:
-                    value_loss = (batch["returns"] - values).pow(2)
+        self.advance_schedule(idx, epoch, batch)
+        self.losses_data["losses/c_loss"] += value_loss.item()
+        self.losses_data["losses/a_loss"] += action_loss.item()
+        self.losses_data["losses/entropy"] += entropy_loss.item()
 
-                value_loss = value_loss.mean()
-                dist_entropy = dist_entropy.mean()
+    def get_action_loss(self, action_log_probs, batch, coefficient):
+        ratio = torch.exp(action_log_probs - batch["action_log_probs"])
+        clipped_ratio = torch.clamp(ratio, 1.0 - self.clip_param, 1.0 + self.clip_param)
+        surr1, surr2 = coefficient * ratio, coefficient * clipped_ratio
+        return -torch.min(surr1.sum(1), surr2.sum(1)).mean()
 
-                self.optimizer.zero_grad()
-                (
-                    0.5 * value_loss * self.value_loss_coef
-                    + action_loss
-                    - dist_entropy * self.entropy_coef
-                ).backward()
-                if self.truncate_grads:
-                    nn.utils.clip_grad_norm_(
-                        self.actor_critic.parameters(), self.max_grad_norm
-                    )
-                self.optimizer.step()
-
-                for param_group in self.optimizer.param_groups:
-                    if self.scheduler.name == "AdaptiveScheduler" and idx + epoch == 0:
-                        continue
-                    param_group["lr"] = self.scheduler.update(
-                        param_group["lr"], algo=self, batch=batch
-                    )
-
-                value_loss_epoch += value_loss.item()
-                action_loss_epoch += action_loss.item()
-                dist_entropy_epoch += dist_entropy.item()
-
+    def get_losses_data(self):
         num_updates = self.ppo_epoch * self.num_mini_batch
-        rollouts.after_update()
-        losses_data = {
-            "losses/c_loss": value_loss_epoch / num_updates,
-            "losses/a_loss": action_loss_epoch / num_updates,
-            "losses/entropy": dist_entropy_epoch / num_updates,
-        }
+        return {k: v / num_updates for k, v in self.losses_data.items()}
 
-        return losses_data
+    def advance_schedule(self, idx, epoch, batch):
+        for param_group in self.optimizer.param_groups:
+            if self.scheduler.name == "AdaptiveScheduler" and idx + epoch == 0:
+                continue
+            param_group["lr"] = self.scheduler.update(
+                param_group["lr"], algo=self, batch=batch
+            )
 
     @classmethod
     def from_config(cls, config, actor_critic):
