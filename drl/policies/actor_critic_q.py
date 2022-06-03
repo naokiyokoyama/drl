@@ -28,13 +28,21 @@ class ActorCriticQ(ActorCritic):
     def generate_q_critic(self, num_reward_terms):
         action_dim = self.action_distribution.num_actions
         state_dim = self.net.input_shape[0]
-        first_hidden_size = self.net.mlp[0].out_features
-        net_copy = copy.deepcopy(self.net)
-        q_critic = nn.Sequential(
-            nn.Linear(state_dim + action_dim, first_hidden_size),
-            *net_copy.mlp[1:],
-            nn.Linear(self.net.output_shape[0], num_reward_terms + 1),
-        )
+        if self.critic_is_head:
+            first_hidden_size = self.net.mlp[0].out_features
+            net_copy = copy.deepcopy(self.net)
+            q_critic = nn.Sequential(
+                nn.Linear(state_dim + action_dim, first_hidden_size),
+                *net_copy.mlp[1:],
+                nn.Linear(self.net.output_shape[0], num_reward_terms + 1),
+            )
+        else:
+            first_hidden_size = self.critic.mlp[0].out_features
+            net_copy = copy.deepcopy(self.critic)
+            q_critic = nn.Sequential(
+                nn.Linear(state_dim + action_dim, first_hidden_size),
+                *net_copy.mlp[1:],
+            )
         return q_critic
 
     def evaluate_actions(self, observations, action):
@@ -44,7 +52,6 @@ class ActorCriticQ(ActorCritic):
             _,  # other
             value_terms_pred,
             q_value_terms_pred,
-            state_action,
         ) = self._process_observations(observations, get_terms=True)
         action_log_probs = dist.log_probs(action)
         distribution_entropy = dist.entropy().sum(dim=-1)
@@ -55,7 +62,6 @@ class ActorCriticQ(ActorCritic):
             distribution_entropy,
             value_terms_pred,
             q_value_terms_pred,
-            state_action,
         )
 
     def get_value(self, observations, features=None, get_terms=False):
@@ -81,7 +87,6 @@ class ActorCriticQ(ActorCritic):
                 other,
                 value_terms_pred,
                 q_value_terms_pred,
-                state_action,
             )
         return value, dist, other
 
