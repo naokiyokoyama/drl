@@ -45,9 +45,10 @@ class BaseRunner:
         actor_critic_cls = drl_registry.get_actor_critic(self.config.ACTOR_CRITIC.name)
         actor_critic = self.instantiate_actor_critic(actor_critic_cls)
         actor_critic.to(self.device)
+        print("Actor-critic architecture:\n", actor_critic)
         if self.config.USE_TORCHSCRIPT:
             actor_critic.convert_to_torchscript()
-        print("Actor-critic architecture:\n", actor_critic)
+            print("Model has been converted to TorchScript.")
         # TODO: Support loading pre-trained weights
         return actor_critic
 
@@ -99,6 +100,8 @@ class BaseTrainer(BaseRunner):
         observations = self.preprocess_observations(observations)
         self.mean_returns.update(rewards, dones)
         rewards *= self.config.RL.reward_scale
+        if "reward_terms" in infos:
+            infos["reward_terms"] *= self.config.RL.reward_scale
         return observations, rewards, dones, infos
 
     def step(self, observations):
