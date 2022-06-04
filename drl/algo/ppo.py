@@ -99,7 +99,7 @@ class PPO(nn.Module):
         ) = self.actor_critic.evaluate_actions(batch["observations"], batch["actions"])
 
         # Action loss
-        action_loss = self.get_action_loss(action_log_probs, batch, batch["advantages"])
+        action_loss = self.get_action_loss(action_log_probs, batch)
 
         # Value loss
         if self.use_clipped_value_loss:
@@ -127,7 +127,7 @@ class PPO(nn.Module):
         for v in self.optimizers.values():
             v.step()
 
-        self.advance_schedule(idx, epoch, batch)
+        self.advance_schedule(batch)
         self.losses_data["losses/c_loss"] += value_loss.item()
         self.losses_data["losses/a_loss"] += action_loss.item()
         self.losses_data["losses/entropy"] += entropy_loss.item()
@@ -142,16 +142,12 @@ class PPO(nn.Module):
         num_updates = self.ppo_epoch * self.num_mini_batch
         return {k: v / num_updates for k, v in self.losses_data.items()}
 
-    def advance_schedule(self, idx, epoch, batch):
+    def advance_schedule(self, batch):
         """This repo assumes only the learning rate for actor is manually modulated"""
         for param_group in self.optimizers["actor"].param_groups:
-            if self.scheduler.name == "AdaptiveScheduler" and idx + epoch == 0:
-                continue
             param_group["lr"] = self.scheduler.update(
                 param_group["lr"], algo=self, batch=batch
             )
-        for param_group in self.optimizers["critic"].param_groups:
-            param_group["lr"] = 3e-3
 
     @classmethod
     def from_config(cls, config, actor_critic, **kwargs):

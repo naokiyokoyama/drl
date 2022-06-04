@@ -74,7 +74,7 @@ class EPPO(PPO):
             0.5 * value_loss * self.value_loss_coef
             + action_loss
             - entropy_loss * self.entropy_coef
-        ).backward(retain_graph=True)
+        ).backward()
         if self.truncate_grads:
             nn.utils.clip_grad_norm_(self.actor_critic.parameters(), self.max_grad_norm)
         for k, v in self.optimizers.items():
@@ -95,7 +95,7 @@ class EPPO(PPO):
         q_value_loss.backward()
         self.optimizers["q_critic"].step()
 
-        self.advance_schedule(idx, epoch, batch)
+        self.advance_schedule(batch)
         self.losses_data["losses/c_loss"] += value_loss.item()
         self.losses_data["losses/eq_loss"] += q_value_loss.item()
         self.losses_data["losses/a_loss"] += action_loss.item()
