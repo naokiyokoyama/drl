@@ -50,16 +50,20 @@ class CustomGaussian:
         self.mu = mu
         self.sigma = sigma
 
-    def sample(self, rsample: bool = False) -> Tensor:
-        if rsample:
-            with torch.no_grad():
-                unit_normal_sample = torch.normal(
-                    torch.zeros_like(self.mu), torch.ones_like(self.sigma)
-                )
-            return self.mu + unit_normal_sample * self.sigma
-        else:
-            with torch.no_grad():
-                return torch.normal(self.mu, self.sigma)
+    def sample(self) -> Tensor:
+        with torch.no_grad():
+            return torch.normal(self.mu, self.sigma)
+
+    def rsample(self) -> Tensor:
+        """Sampling using the re-parameterization trick to allow for backprop"""
+        with torch.no_grad():
+            unit_normal_sample = torch.normal(
+                torch.zeros_like(self.mu), torch.ones_like(self.sigma)
+            )
+        return self.mu + unit_normal_sample * self.sigma
+
+    def deterministic_sample(self):
+        return self.mu
 
     def log_probs(self, actions: Tensor, sum_reduce: bool = True) -> Tensor:
         log_probs = (
@@ -70,9 +74,6 @@ class CustomGaussian:
         if sum_reduce:
             return log_probs.sum(1, keepdim=True)
         return log_probs
-
-    def deterministic_sample(self):
-        return self.mu
 
     def entropy(self):
         return 0.5 + 0.5 * math.log(2 * math.pi) + torch.log(self.sigma)

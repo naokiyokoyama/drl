@@ -17,10 +17,17 @@ ACTOR_CRITIC:
     hidden_sizes: [256, 128, 64]
     activation: "elu"
   critic:
+    # The output shape of the critic will be determined by the learning algorithm used. Typically, will be 1.
     name: "MLPCritic"
-    hidden_sizes: []
+#    hidden_sizes: []
+#    is_head: True
+    hidden_sizes: [128, 64]
+    is_head: False
     activation: "elu"
-    is_head: True
+  q_critic:
+    name: "MLPCritic"
+    hidden_sizes: [128, 64]
+    activation: "elu"
   action_distribution:
     name: "GaussianActDist"
     min_sigma: 1.0e-6
@@ -41,7 +48,10 @@ RL:
     value_loss_coef: 2.0
     entropy_coef: 0.000
     truncate_grads: False
-    lr: 3.0e-4
+    # The actor_lr will be used for the critic if it is just a head
+    actor_lr: 3.0e-4
+    critic_lr: 3.0e-3
+    q_critic_lr: 3.0e-2  # not used for vanilla PPO, but is used for RPG, ERPG, and EPPO
     eps: 1.0e-8
     max_grad_norm: 1.0
     use_linear_clip_decay: False
@@ -50,9 +60,11 @@ RL:
 
   num_steps: 16  # rollout length
   use_gae: True
+#  use_gae: False
   gamma: 0.99
   tau: 0.95
   value_bootstrap: True
+#  value_bootstrap: False
   use_linear_lr_decay: False
   reward_window_size: 50
   use_normalized_advantage: True

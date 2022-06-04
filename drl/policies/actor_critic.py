@@ -23,28 +23,29 @@ class ActorCritic(nn.Module):
         self.critic = critic
         self.critic_is_head = critic_is_head
 
-    def act(self, observations, deterministic=False, rsample=False):
+    def act(self, observations, deterministic=False):
         value, dist, other = self._process_observations(observations)
-        actions = dist.deterministic_sample() if deterministic else dist.sample(rsample)
+        actions = dist.deterministic_sample() if deterministic else dist.sample()
         action_log_probs = dist.log_probs(actions)
 
         return value, actions, action_log_probs, other
 
     def evaluate_actions(self, observations, action):
-        value, dist, _ = self._process_observations(observations)
+        value, dist, _ = self._process_observations(observations, get_terms=True)
         action_log_probs = dist.log_probs(action)
-        distribution_entropy = dist.entropy().sum(dim=-1)
+        return value, action_log_probs, dist
 
-        return value, action_log_probs, distribution_entropy
-
-    def get_value(self, observations, features=None):
+    def get_value(self, observations, features=None, get_terms=False):
         if self.critic_is_head and features is None:
             features = self.net(observations)
-        return self.critic(features if self.critic_is_head else observations)
+        value = self.critic(features if self.critic_is_head else observations)
+        if value.shape[1] > 1 and not get_terms:
+            value = value.sum(1, keepdim=True)
+        return value
 
-    def _process_observations(self, observations):
+    def _process_observations(self, observations, get_terms=False):
         features = self.net(observations)
-        value = self.get_value(observations)
+        value = self.get_value(observations, features, get_terms)
         dist = self.action_distribution(features)
         other = self._get_other()
 

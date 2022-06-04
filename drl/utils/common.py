@@ -4,6 +4,7 @@ from typing import Union
 
 import numpy as np
 import torch
+import torch.nn.functional as F
 from yacs.config import CfgNode as CN
 
 UTILS_DIR = osp.dirname(osp.abspath(__file__))
@@ -29,6 +30,13 @@ def construct_config(config_path=None, opts=None):
     config.merge_from_list(opts)
 
     return config
+
+
+@torch.jit.script
+def mse_loss(tensor1, tensor2):
+    """Do F.mse_loss but ensure shapes match"""
+    assert tensor1.shape == tensor2.shape
+    return F.mse_loss(tensor1, tensor2)
 
 
 class MeanReturns:

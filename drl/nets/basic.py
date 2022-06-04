@@ -67,6 +67,7 @@ class MLPBase(NNBase):  # noqa
             input_shape=obs_space.shape,
             hidden_sizes=nn_config.hidden_sizes,
             activation=nn_config.activation,
+            **kwargs,
         )
 
 

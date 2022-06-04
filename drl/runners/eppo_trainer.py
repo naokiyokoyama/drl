@@ -11,7 +11,6 @@ class EPPOTrainer(PPOTrainer):
     algo_cls = EPPO
 
     def instantiate_actor_critic(self, actor_critic_cls):
-        torch.autograd.set_detect_anomaly(True)
         assert issubclass(
             actor_critic_cls, ActorCriticQ
         ), "EPPO requires actor-critic to be ActorCriticQ (or inherited from it)!"
