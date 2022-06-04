@@ -19,10 +19,8 @@ ACTOR_CRITIC:
   critic:
     # The output shape of the critic will be determined by the learning algorithm used. Typically, will be 1.
     name: "MLPCritic"
-#    hidden_sizes: []
-#    is_head: True
-    hidden_sizes: [128, 64]
-    is_head: False
+    hidden_sizes: []
+    is_head: True
     activation: "elu"
   q_critic:
     name: "MLPCritic"
@@ -43,8 +41,8 @@ RL:
     max_lr: 1.0e-2
   PPO:
     clip_param: 0.2
-    ppo_epoch: 1
-    num_mini_batch: 4
+    ppo_epoch: 4
+    num_mini_batch: 2
     value_loss_coef: 2.0
     entropy_coef: 0.000
     truncate_grads: False
@@ -60,11 +58,9 @@ RL:
 
   num_steps: 16  # rollout length
   use_gae: True
-#  use_gae: False
   gamma: 0.99
   tau: 0.95
   value_bootstrap: True
-#  value_bootstrap: False
   use_linear_lr_decay: False
   reward_window_size: 50
   use_normalized_advantage: True
