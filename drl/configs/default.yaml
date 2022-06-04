@@ -35,7 +35,6 @@ ACTOR_CRITIC:
 RL:
   scheduler:
     name: AdaptiveScheduler
-#    name: IdentityScheduler
     kl_threshold: 0.008
     min_lr: 1.0e-6
     max_lr: 1.0e-2
