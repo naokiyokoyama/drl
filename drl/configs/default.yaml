@@ -48,7 +48,7 @@ RL:
     # The actor_lr will be used for the critic if it is just a head
     actor_lr: 3.0e-4
     critic_lr: 3.0e-3
-    q_critic_lr: 3.0e-2  # not used for vanilla PPO, but is used for RPG, ERPG, and EPPO
+    q_critic_lr: 3.0e-3  # not used for vanilla PPO, but is used for RPG, ERPG, and EPPO
     eps: 1.0e-8
     max_grad_norm: 1.0
     use_linear_clip_decay: False
