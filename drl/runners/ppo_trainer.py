@@ -1,6 +1,6 @@
 import torch
 
-from drl.algo import PPO
+from drl.algo.ppo import PPO
 from drl.runners.base_runner import BaseTrainer
 from drl.utils.registry import drl_registry
 from drl.utils.rollout_storage import RolloutStorage

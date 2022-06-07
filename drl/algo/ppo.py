@@ -1,4 +1,3 @@
-import time
 from collections import defaultdict
 from typing import Dict
 
@@ -79,7 +78,7 @@ class PPO(nn.Module):
             generator = rollouts.feed_forward_generator
         for epoch in range(self.ppo_epoch):
             for idx, batch in enumerate(generator(advantages, self.num_mini_batch)):
-                self.single_update(epoch, idx, batch)
+                self.single_update(batch)
         rollouts.after_update()
         return self.get_losses_data()
 
@@ -91,7 +90,7 @@ class PPO(nn.Module):
             return (advantages - advantages.mean()) / (advantages.std() + EPS_PPO)
         return advantages
 
-    def single_update(self, epoch, idx, batch):
+    def single_update(self, batch):
         (
             values,
             action_log_probs,

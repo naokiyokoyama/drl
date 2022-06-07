@@ -1,6 +1,6 @@
 import torch
 
-from drl.algo import EPPO
+from drl.algo.eppo import EPPO
 from drl.policies.actor_critic_q import ActorCriticQ
 from drl.runners.ppo_trainer import PPOTrainer
 from drl.utils.registry import drl_registry

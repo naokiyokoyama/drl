@@ -8,7 +8,7 @@ import torch
 import torch.nn as nn
 from torch.optim import Adam
 
-from drl.algo import PPO
+from drl.algo.ppo import PPO
 from drl.utils.common import mse_loss
 
 
@@ -38,7 +38,7 @@ class EPPO(PPO):
             optimizers["critic"] = Adam(critic_params, lr=self.critic_lr, eps=eps)
         return optimizers
 
-    def single_update(self, epoch, idx, batch):
+    def single_update(self, batch):
         (
             values,
             action_log_probs,
