@@ -11,7 +11,7 @@ class Writer(SummaryWriter):
             shutil.rmtree(path)
         super().__init__(path, *args, **kwargs)
 
-        # Create a .csv file, removing it if it already exists
+        # Generate path to a .csv file, removing it if it already exists
         self.csv_path = osp.join(path, osp.basename(path) + ".csv")
         if osp.isfile(self.csv_path):
             os.remove(self.csv_path)
@@ -27,7 +27,7 @@ class Writer(SummaryWriter):
                 self.csv_header.append(k)
         new_data = self.list_to_csv_line(new_data)
         if record_header:
-            new_data = self.list_to_csv_line([idx] + self.csv_header) + new_data
+            new_data = self.list_to_csv_line(["idx"] + self.csv_header) + new_data
         with open(self.csv_path, "a") as f:
             f.write(new_data)
 
