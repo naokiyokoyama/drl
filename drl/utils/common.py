@@ -35,7 +35,7 @@ def construct_config(config_path=None, opts=None):
 @torch.jit.script
 def mse_loss(tensor1, tensor2):
     """Do F.mse_loss but ensure shapes match"""
-    assert tensor1.shape == tensor2.shape
+    assert tensor1.shape == tensor2.shape, f"{tensor1.shape} != {tensor2.shape}"
     return F.mse_loss(tensor1, tensor2)
 
 
