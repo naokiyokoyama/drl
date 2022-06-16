@@ -62,5 +62,4 @@ RL:
   value_bootstrap: True
   use_linear_lr_decay: False
   reward_window_size: 50
-  use_normalized_advantage: True
   reward_scale: 0.01
