@@ -54,6 +54,7 @@ RL:
     use_linear_clip_decay: False
     use_clipped_value_loss: False
     use_normalized_advantage: True
+    q_coeff: 1.0
 
   num_steps: 16  # rollout length
   use_gae: True
