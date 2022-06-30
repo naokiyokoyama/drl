@@ -23,21 +23,12 @@ class ERPG(EPPO):
 
         value_loss = mse_loss(values, batch["returns"])
 
-        ratio = torch.exp(action_log_probs - batch["action_log_probs"])
-        too_high = torch.logical_and(
-            batch["advantages"] > 0, ratio > 1 + self.clip_param
-        )
-        too_low = torch.logical_and(
-            batch["advantages"] < 0, ratio < 1 - self.clip_param
-        )
-        ratio = torch.where(
-            torch.logical_or(too_low, too_high), torch.zeros_like(ratio), ratio
-        )
+        mask = self.cherry_pick(action_log_probs, batch)
         obj = (
-            q_value_terms_pred.sum(1, keepdims=True)
+            q_value_terms_pred.sum(1, keepdims=True) * self.q_coeff
             + batch["advantages"] * action_log_probs
         )
-        action_loss = -(ratio.detach() * obj).mean()
+        action_loss = -(obj * mask).mean()
 
         # Entropy loss
         entropy_loss = dist.entropy().sum(dim=1).mean()

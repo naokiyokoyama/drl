@@ -13,8 +13,9 @@ from drl.utils.common import mse_loss
 
 
 class EPPO(PPO):
-    def __init__(self, q_critic_lr, *args, **kwargs):
+    def __init__(self, q_critic_lr, q_coeff, *args, **kwargs):
         self.q_critic_lr = q_critic_lr
+        self.q_coeff = q_coeff
         super().__init__(*args, **kwargs)
 
     def setup_optimizer(self, eps):
@@ -45,24 +46,16 @@ class EPPO(PPO):
             dist,
             q_value_terms_pred,
         ) = self.actor_critic.evaluate_actions(batch["observations"], batch["actions"])
+        next_value_gt = batch["returns"] - batch["reward_terms"].sum(1, keepdims=True)
+        value_terms_gt = torch.cat([batch["reward_terms"], next_value_gt], 1)
 
         value_loss = mse_loss(values, batch["returns"])
-
+        mask = self.cherry_pick(action_log_probs, batch)
         ratio = torch.exp(action_log_probs - batch["action_log_probs"])
-        too_high = torch.logical_and(
-            batch["advantages"] > 0, ratio > 1 + self.clip_param
-        )
-        too_low = torch.logical_and(
-            batch["advantages"] < 0, ratio < 1 - self.clip_param
-        )
-        ratio = torch.where(
-            torch.logical_or(too_low, too_high), torch.zeros_like(ratio), ratio
-        )
-        obj = (
-            q_value_terms_pred.sum(1, keepdims=True)
-            + batch["advantages"] * action_log_probs
-        )
-        action_loss = -(ratio.detach() * obj).mean()
+        if q_value_terms_pred.shape[1] > 1:
+            q_value_terms_pred = q_value_terms_pred.sum(1, keepdims=True)
+        obj = ratio * batch["advantages"] + self.q_coeff * q_value_terms_pred
+        action_loss = -(obj * mask).mean()
 
         # Entropy loss
         entropy_loss = dist.entropy().sum(dim=1).mean()
@@ -83,7 +76,10 @@ class EPPO(PPO):
 
         state_action = torch.cat([batch["observations"], batch["actions"]], dim=1)
         q_value_terms_pred = self.actor_critic.q_critic(state_action)
-        q_value_loss = mse_loss(q_value_terms_pred, batch["reward_terms"])
+        if q_value_terms_pred.shape[1] > 1:
+            q_value_loss = mse_loss(q_value_terms_pred, value_terms_gt)
+        else:
+            q_value_loss = mse_loss(q_value_terms_pred, batch["returns"])
         assert torch.allclose(
             batch["reward_terms"].sum(1, keepdims=True),
             batch["rewards"],
@@ -101,7 +97,22 @@ class EPPO(PPO):
         self.losses_data["losses/a_loss"] += action_loss.item()
         self.losses_data["losses/entropy"] += entropy_loss.item()
 
+    def cherry_pick(self, action_log_probs, batch):
+        ratio = torch.exp(action_log_probs - batch["action_log_probs"])
+        adv = batch["advantages"].repeat(1, action_log_probs.shape[1])
+        assert adv.shape == ratio.shape
+        bad = torch.logical_or(
+            torch.logical_and(adv > 0, ratio > 1 + self.clip_param),
+            torch.logical_and(adv < 0, ratio < 1 - self.clip_param),
+        )
+        mask = torch.logical_not(bad).detach()
+        return mask
+
     @classmethod
     def from_config(cls, config, actor_critic, **kwargs):
-        q_critic_lr = config.RL.PPO.critic_lr
-        return super().from_config(config, actor_critic, q_critic_lr=q_critic_lr)
+        return super().from_config(
+            config,
+            actor_critic,
+            q_critic_lr=config.RL.PPO.critic_lr,
+            q_coeff=config.RL.PPO.q_coeff,
+        )
