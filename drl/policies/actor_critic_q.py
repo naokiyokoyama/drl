@@ -43,7 +43,10 @@ class ActorCriticQ(ActorCritic):
         **kwargs,
     ):
         if config.RUNNER.name == "EPPOTrainer":
-            num_outputs = num_reward_terms + 1
+            if config.RL.PPO.q_terms == 1:
+                num_outputs = 1
+            else:
+                num_outputs = num_reward_terms + 1
         elif config.RUNNER.name == "ERPGTrainer":
             num_outputs = num_reward_terms
         elif config.RUNNER.name == "RPGTrainer":
