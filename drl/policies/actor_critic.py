@@ -7,6 +7,8 @@ from torch import nn as nn
 from drl.nets.basic import NNBase
 from drl.utils.registry import drl_registry
 
+from drl.utils.running_mean_std import RunningMeanStd
+
 
 @drl_registry.register_actor_critic
 class ActorCritic(nn.Module):
@@ -16,12 +18,17 @@ class ActorCritic(nn.Module):
         critic: Union[NNBase, nn.Module],
         action_distribution: nn.Module,
         critic_is_head: bool = False,
+        normalize_obs: bool = True,
     ):
         super().__init__()
         self.net = net
         self.action_distribution = action_distribution
         self.critic = critic
         self.critic_is_head = critic_is_head
+        if normalize_obs:
+            self.obs_normalizer = RunningMeanStd(self.net.input_shape)
+        else:
+            self.obs_normalizer = None
 
     def act(self, observations, deterministic=False):
         value, dist, other = self._process_observations(observations)
@@ -36,6 +43,8 @@ class ActorCritic(nn.Module):
         return value, action_log_probs, dist
 
     def get_value(self, observations, features=None, get_terms=False):
+        if self.obs_normalizer is not None:
+            observations = self.obs_normalizer(observations)
         if self.critic_is_head and features is None:
             features = self.net(observations)
         value = self.critic(features if self.critic_is_head else observations)
@@ -44,6 +53,8 @@ class ActorCritic(nn.Module):
         return value
 
     def _process_observations(self, observations, get_terms=False):
+        if self.obs_normalizer is not None:
+            observations = self.obs_normalizer(observations)
         features = self.net(observations)
         value = self.get_value(observations, features, get_terms)
         dist = self.action_distribution(features)
@@ -102,6 +113,7 @@ class ActorCritic(nn.Module):
                 config, net.output_shape[0], action_space.shape[0]
             ),
             critic_is_head=ac_cfg.critic.is_head,
+            normalize_obs=ac_cfg.normalize_obs,
             **kwargs,
         )
 

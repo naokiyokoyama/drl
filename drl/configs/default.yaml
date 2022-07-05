@@ -32,6 +32,7 @@ ACTOR_CRITIC:
     max_sigma: 1.0
     sigma_as_params: True
     clip_sigma: False
+  normalize_obs: True
 RL:
   scheduler:
     name: AdaptiveScheduler
