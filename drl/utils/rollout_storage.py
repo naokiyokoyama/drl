@@ -202,6 +202,12 @@ class RolloutStorage:
 
             yield batch.map(lambda v: v.flatten(0, 1))
 
+    def normalize_values(self, value_normalizer):
+        for k in ["value_preds", "returns"]:
+            self.buffers[k] = value_normalizer(
+                self.buffers[k].reshape(-1, 1)
+            ).reshape(self.num_steps + 1, self._num_envs, -1)
+
 
 @torch.jit.script
 def compute_returns(

@@ -33,6 +33,7 @@ ACTOR_CRITIC:
     sigma_as_params: True
     clip_sigma: False
   normalize_obs: True
+  normalize_value: True
 RL:
   scheduler:
     name: AdaptiveScheduler

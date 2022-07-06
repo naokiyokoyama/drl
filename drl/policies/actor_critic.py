@@ -15,10 +15,11 @@ class ActorCritic(nn.Module):
     def __init__(
         self,
         net: NNBase,
-        critic: Union[NNBase, nn.Module],
+        critic: NNBase,
         action_distribution: nn.Module,
         critic_is_head: bool = False,
         normalize_obs: bool = True,
+        normalize_value: bool = True,
     ):
         super().__init__()
         self.net = net
@@ -29,6 +30,10 @@ class ActorCritic(nn.Module):
             self.obs_normalizer = RunningMeanStd(self.net.input_shape)
         else:
             self.obs_normalizer = None
+        if normalize_value:
+            self.value_normalizer = RunningMeanStd(critic.output_shape)  # used w/ppo.py
+        else:
+            self.value_normalizer = None
 
     def act(self, observations, deterministic=False):
         value, dist, other = self._process_observations(observations)
@@ -114,6 +119,7 @@ class ActorCritic(nn.Module):
             ),
             critic_is_head=ac_cfg.critic.is_head,
             normalize_obs=ac_cfg.normalize_obs,
+            normalize_value=ac_cfg.normalize_value,
             **kwargs,
         )
 

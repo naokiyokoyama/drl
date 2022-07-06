@@ -76,6 +76,8 @@ class PPO(nn.Module):
             generator = rollouts.recurrent_generator
         else:
             generator = rollouts.feed_forward_generator
+        if self.actor_critic.value_normalizer is not None:
+            rollouts.normalize_values(self.actor_critic.value_normalizer)
         for epoch in range(self.ppo_epoch):
             for idx, batch in enumerate(generator(advantages, self.num_mini_batch)):
                 self.single_update(batch)

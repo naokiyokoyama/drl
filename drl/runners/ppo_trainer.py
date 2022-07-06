@@ -25,6 +25,8 @@ class PPOTrainer(BaseTrainer):
                 action_log_probs,
                 other,
             ) = self.actor_critic.act(observations)
+            if self.actor_critic.value_normalizer is not None:
+                value = self.actor_critic.value_normalizer(value, True)
 
         observations, rewards, dones, infos = self.step_envs(actions)
         other.update(infos)
@@ -43,5 +45,7 @@ class PPOTrainer(BaseTrainer):
     def update(self, observations):
         with torch.no_grad():
             next_value = self.actor_critic.get_value(observations)
+            if self.actor_critic.value_normalizer is not None:
+                next_value = self.actor_critic.value_normalizer(next_value, True)
         self.rollouts.compute_returns(next_value)
         self.write_data.update(self.algo.update(self.rollouts))
