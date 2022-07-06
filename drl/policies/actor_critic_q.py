@@ -19,8 +19,17 @@ class ActorCriticQ(ActorCritic):
         q_critic: Union[NNBase, nn.Module],
         action_distribution: nn.Module,
         critic_is_head: bool = False,
+        normalize_obs: bool = True,
+        normalize_value: bool = True,
     ):
-        super().__init__(net, critic, action_distribution, critic_is_head)
+        super().__init__(
+            net,
+            critic,
+            action_distribution,
+            critic_is_head,
+            normalize_obs,
+            normalize_value,
+        )
         self.q_critic = q_critic
 
     def evaluate_actions(self, observations, action):
