@@ -39,8 +39,7 @@ class RolloutStorage:
         self.value_bootstrap = value_bootstrap
 
         # We can definitively define the shapes of these sub-buffers without a sample
-        for i in ["rewards", "value_preds", "returns"]:
-            self.buffers[i] = torch.zeros(num_steps + 1, num_envs, 1, device=device)
+        self.buffers["rewards"] = torch.zeros(num_steps + 1, num_envs, 1, device=device)
         self.buffers["not_dones"] = torch.zeros(
             num_steps + 1, num_envs, 1, device=device, dtype=torch.bool
         )
