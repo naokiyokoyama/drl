@@ -100,7 +100,7 @@ class EPPO(PPO):
     def cherry_pick(self, action_log_probs, batch):
         ratio = torch.exp(action_log_probs - batch["action_log_probs"])
         adv = batch["advantages"].repeat(1, action_log_probs.shape[1])
-        assert adv.shape == ratio.shape
+        assert adv.shape == ratio.shape, f"{adv.shape} != {ratio.shape}"
         bad = torch.logical_or(
             torch.logical_and(adv > 0, ratio > 1 + self.clip_param),
             torch.logical_and(adv < 0, ratio < 1 - self.clip_param),
