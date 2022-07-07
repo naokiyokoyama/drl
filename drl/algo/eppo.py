@@ -46,8 +46,6 @@ class EPPO(PPO):
             dist,
             q_value_terms_pred,
         ) = self.actor_critic.evaluate_actions(batch["observations"], batch["actions"])
-        next_value_gt = batch["returns"] - batch["reward_terms"].sum(1, keepdims=True)
-        value_terms_gt = torch.cat([batch["reward_terms"], next_value_gt], 1)
 
         value_loss = mse_loss(values, batch["returns"])
         mask = self.cherry_pick(action_log_probs, batch)
@@ -76,7 +74,11 @@ class EPPO(PPO):
 
         state_action = torch.cat([batch["observations"], batch["actions"]], dim=1)
         q_value_terms_pred = self.actor_critic.q_critic(state_action)
-        if q_value_terms_pred.shape[1] > 1:
+        if q_value_terms_pred.shape[1] == batch["reward_terms"].shape[1] + 1:
+            next_value_gt = batch["returns"] - batch["reward_terms"].sum(
+                1, keepdims=True
+            )
+            value_terms_gt = torch.cat([batch["reward_terms"], next_value_gt], 1)
             q_value_loss = mse_loss(q_value_terms_pred, value_terms_gt)
         else:
             q_value_loss = mse_loss(q_value_terms_pred, batch["returns"])
