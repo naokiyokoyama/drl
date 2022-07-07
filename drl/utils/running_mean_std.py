@@ -46,6 +46,9 @@ class RunningMeanStdAtomic(nn.Module):
         return new_mean, new_var, new_count
 
     def forward(self, input, unnorm=False):
+        assert (
+            len(input.shape) == 2 and input.shape[1] == self.in_shape[0]
+        ), f"Bad input shape: {input.shape}"
         if self.training:
             mean = input.mean(self.axis)  # along channel axis
             var = input.var(self.axis)
@@ -119,14 +122,22 @@ class RunningMeanStd(RunningMeanStdAtomic):
                     for k, v in obs_space.items()
                 }
             )
+            in_shape = list(obs_space.values())
         else:
             in_shape = obs_space if isinstance(obs_space, tuple) else obs_space.shape
             super().__init__(
                 in_shape, epsilon=1e-05, per_channel=False, norm_only=False
             )
             self.running_mean_std = None
+        self.repr_str = (
+            f"in_shape={in_shape}, epsilon={epsilon}, per_channel={per_channel}, "
+            f"norm_only={norm_only}"
+        )
 
     def forward(self, input, unnorm=False):
         if self.running_mean_std is None:
             return super().forward(input, unnorm)
         return {k: self.running_mean_std(v, unnorm) for k, v in input.items()}
+
+    def extra_repr(self) -> str:
+        return self.repr_str
