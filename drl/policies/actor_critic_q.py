@@ -51,8 +51,12 @@ class ActorCriticQ(ActorCritic):
         num_reward_terms: int = 0,
         **kwargs,
     ):
+        critic_kwargs = {}
         if config.RUNNER.name == "EPPOTrainer":
-            if config.RL.PPO.q_terms == 1:
+            if config.RL.term_by_term_returns:
+                num_outputs = num_reward_terms
+                critic_kwargs["num_outputs"] = num_reward_terms
+            elif config.RL.PPO.q_terms == 1:
                 num_outputs = 1
             else:
                 num_outputs = num_reward_terms + 1
@@ -74,5 +78,6 @@ class ActorCriticQ(ActorCritic):
             action_space=action_space,
             critic_obs_space=critic_obs_space,
             q_critic=q_critic,
+            critic_kwargs=critic_kwargs,
             **kwargs,
         )

@@ -10,6 +10,10 @@ from drl.utils.registry import drl_registry
 class EPPOTrainer(PPOTrainer):
     algo_cls = EPPO
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.term_by_term_returns = self.config.RL.term_by_term_returns
+
     def instantiate_actor_critic(self, actor_critic_cls):
         assert issubclass(
             actor_critic_cls, ActorCriticQ

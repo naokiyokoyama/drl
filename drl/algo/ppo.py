@@ -86,7 +86,8 @@ class PPO(nn.Module):
 
     def get_advantages(self, rollouts: RolloutStorage) -> Tensor:
         advantages = (
-            rollouts.buffers["returns"][:-1] - rollouts.buffers["value_preds"][:-1]
+            rollouts.buffers["returns"][:-1].sum(-1, keepdims=True)
+            - rollouts.buffers["value_preds"][:-1].sum(-1, keepdims=True)
         )
         if self.use_normalized_advantage:
             return (advantages - advantages.mean()) / (advantages.std() + EPS_PPO)

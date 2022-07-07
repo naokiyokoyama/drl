@@ -1,5 +1,4 @@
 import warnings
-from typing import Union
 
 import numpy as np
 from torch import nn as nn
@@ -35,8 +34,8 @@ class ActorCritic(nn.Module):
         else:
             self.value_normalizer = None
 
-    def act(self, observations, deterministic=False):
-        value, dist, other = self._process_observations(observations)
+    def act(self, observations, deterministic=False, get_terms=False):
+        value, dist, other = self._process_observations(observations, get_terms)
         actions = dist.deterministic_sample() if deterministic else dist.sample()
         action_log_probs = dist.log_probs(actions)
 
@@ -111,9 +110,16 @@ class ActorCritic(nn.Module):
         elif critic_obs_space is None:
             critic_obs_space = obs_space
 
+        if "critic_kwargs" in kwargs:
+            critic_kwargs = kwargs.pop("critic_kwargs")
+        else:
+            critic_kwargs = {}
+
         return cls(
             net=net,
-            critic=critic_cls.from_config(ac_cfg.critic, critic_obs_space),
+            critic=critic_cls.from_config(
+                ac_cfg.critic, critic_obs_space, **critic_kwargs
+            ),
             action_distribution=act_dist_cls.from_config(
                 config, net.output_shape[0], action_space.shape[0]
             ),

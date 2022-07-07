@@ -9,6 +9,7 @@ from drl.utils.rollout_storage import RolloutStorage
 @drl_registry.register_runner
 class PPOTrainer(BaseTrainer):
     algo_cls = PPO
+    term_by_term_returns = False
 
     def __init__(self, config, envs=None):
         super().__init__(config, envs)
@@ -24,7 +25,7 @@ class PPOTrainer(BaseTrainer):
                 actions,
                 action_log_probs,
                 other,
-            ) = self.actor_critic.act(observations)
+            ) = self.actor_critic.act(observations, get_terms=self.term_by_term_returns)
             if self.actor_critic.value_normalizer is not None:
                 value = self.actor_critic.value_normalizer(value, True)
 
@@ -44,8 +45,12 @@ class PPOTrainer(BaseTrainer):
 
     def update(self, observations):
         with torch.no_grad():
-            next_value = self.actor_critic.get_value(observations)
+            next_value = self.actor_critic.get_value(
+                observations, get_terms=self.term_by_term_returns
+            )
             if self.actor_critic.value_normalizer is not None:
                 next_value = self.actor_critic.value_normalizer(next_value, True)
-        self.rollouts.compute_returns(next_value)
+        self.rollouts.compute_returns(
+            next_value, term_by_term_returns=self.term_by_term_returns
+        )
         self.write_data.update(self.algo.update(self.rollouts))
