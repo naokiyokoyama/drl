@@ -110,10 +110,14 @@ class TensorDict(Dict[str, Union["TensorDict", torch.Tensor]]):
                         continue
 
                 v = value[k]
-                if isinstance(v, (TensorDict, dict)):
-                    self[k].set(index, v, strict=strict)
-                else:
-                    self[k][index].copy_(torch.as_tensor(v))
+                try:
+                    if isinstance(v, (TensorDict, dict)):
+                        self[k].set(index, v, strict=strict)
+                    else:
+                        self[k][index].copy_(torch.as_tensor(v))
+                except Exception as e:
+                    print(f"Failed to set key '{k}'!")
+                    raise e
 
     def __setitem__(
         self,
