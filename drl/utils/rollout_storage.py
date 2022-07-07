@@ -204,9 +204,9 @@ class RolloutStorage:
 
     def normalize_values(self, value_normalizer):
         for k in ["value_preds", "returns"]:
-            self.buffers[k] = value_normalizer(
-                self.buffers[k].reshape(-1, 1)
-            ).reshape(self.num_steps + 1, self._num_envs, -1)
+            self.buffers[k] = value_normalizer(self.buffers[k].reshape(-1, 1)).reshape(
+                self.num_steps + 1, self._num_envs, -1
+            )
 
 
 @torch.jit.script
