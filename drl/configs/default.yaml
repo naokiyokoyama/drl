@@ -54,7 +54,7 @@ RL:
     eps: 1.0e-8
     max_grad_norm: 1.0
     use_linear_clip_decay: False
-    use_clipped_value_loss: False
+    use_clipped_value_loss: True
     use_normalized_advantage: True
     q_coeff: 1.0
     q_terms: -1.0
