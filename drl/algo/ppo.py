@@ -58,7 +58,7 @@ class PPO(nn.Module):
             return {"actor": Adam(params, lr=self.actor_lr, eps=eps)}
 
         actor_params, critic_params = [], []
-        for name, p in self.actor_critic.parameters():
+        for name, p in self.actor_critic.named_parameters():
             if not p.requires_grad:
                 continue
             elif "critic" in name:
