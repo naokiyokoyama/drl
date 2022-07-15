@@ -71,7 +71,7 @@ class PPO(nn.Module):
 
     def update(self, rollouts: RolloutStorage) -> Dict:
         advantages = self.get_advantages(rollouts)
-        self.losses_data = defaultdict(float)
+        self.losses_data = defaultdict(float)  # clear the loss data
         if self.actor_critic.is_recurrent:
             generator = rollouts.recurrent_generator
         else:
@@ -100,22 +100,9 @@ class PPO(nn.Module):
             dist,
         ) = self.actor_critic.evaluate_actions(batch["observations"], batch["actions"])
 
-        # Action loss
-        action_loss = self.get_action_loss(action_log_probs, batch)
-
-        # Value loss
-        if self.use_clipped_value_loss:
-            value_pred_clipped = batch["value_preds"] + (
-                values - batch["value_preds"]
-            ).clamp(-self.clip_param, self.clip_param)
-            value_losses = (values - batch["returns"]).pow(2)
-            value_losses_clipped = (value_pred_clipped - batch["returns"]).pow(2)
-            value_loss = torch.max(value_losses, value_losses_clipped).mean()
-        else:
-            value_loss = mse_loss(values, batch["returns"])
-
-        # Entropy loss
-        entropy_loss = dist.entropy().sum(dim=1).mean()
+        action_loss = self.action_loss(action_log_probs, batch)
+        value_loss = self.value_loss(values, batch)
+        entropy_loss = self.entropy_loss(dist)
 
         for v in self.optimizers.values():
             v.zero_grad()
@@ -130,15 +117,32 @@ class PPO(nn.Module):
             v.step()
 
         self.advance_schedule(batch)
-        self.losses_data["losses/c_loss"] += value_loss.item()
-        self.losses_data["losses/a_loss"] += action_loss.item()
-        self.losses_data["losses/entropy"] += entropy_loss.item()
 
-    def get_action_loss(self, action_log_probs, batch):
+    def action_loss(self, action_log_probs, batch):
         ratio = torch.exp(action_log_probs - batch["action_log_probs"])
-        clipped_ratio = torch.clamp(ratio, 1.0 - self.clip_param, 1.0 + self.clip_param)
+        clipped_ratio = ratio.clamp(1.0 - self.clip_param, 1.0 + self.clip_param)
         surr1, surr2 = batch["advantages"] * ratio, batch["advantages"] * clipped_ratio
-        return -torch.min(surr1.sum(1), surr2.sum(1)).mean()
+        action_loss = -torch.min(surr1.sum(1), surr2.sum(1)).mean()
+        self.losses_data["losses/a_loss"] += action_loss.item()
+        return action_loss
+
+    def value_loss(self, values, batch):
+        if self.use_clipped_value_loss:
+            value_pred_clipped = batch["value_preds"] + (
+                values - batch["value_preds"]
+            ).clamp(-self.clip_param, self.clip_param)
+            value_losses = (values - batch["returns"]).pow(2)
+            value_losses_clipped = (value_pred_clipped - batch["returns"]).pow(2)
+            value_loss = torch.max(value_losses, value_losses_clipped).mean()
+        else:
+            value_loss = mse_loss(values, batch["returns"])
+        self.losses_data["losses/c_loss"] += value_loss.item()
+        return value_loss
+
+    def entropy_loss(self, dist):
+        entropy_loss = dist.entropy().sum(dim=1).mean()
+        self.losses_data["losses/entropy"] += entropy_loss.item()
+        return entropy_loss
 
     def get_losses_data(self):
         num_updates = self.ppo_epoch * self.num_mini_batch
