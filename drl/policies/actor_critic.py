@@ -24,6 +24,7 @@ class ActorCritic(nn.Module):
         self.net = net
         self.action_distribution = action_distribution
         self.critic = critic
+        self.features = None  # encoder features stored for use with head if needed
         self.critic_is_head = critic_is_head
         self.obs_normalizer = (
             RunningMeanStd(self.net.input_shape) if normalize_obs else None
@@ -61,7 +62,7 @@ class ActorCritic(nn.Module):
     def _process_observations(self, observations, get_terms=False, unnorm_value=True):
         if self.obs_normalizer is not None:
             observations = self.obs_normalizer(observations)
-        features = self.net(observations)
+        self.features = features = self.net(observations)
         value = self.get_value(observations, features, get_terms, unnorm_value)
         dist = self.action_distribution(features)
         other = self._get_other()
