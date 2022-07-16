@@ -26,8 +26,6 @@ class PPOTrainer(BaseTrainer):
                 action_log_probs,
                 other,
             ) = self.actor_critic.act(observations, get_terms=self.term_by_term_returns)
-            if self.actor_critic.value_normalizer is not None:
-                value = self.actor_critic.value_normalizer(value, True)
 
         observations, rewards, dones, infos = self.step_envs(actions)
         other.update(infos)
@@ -48,8 +46,6 @@ class PPOTrainer(BaseTrainer):
             next_value = self.actor_critic.get_value(
                 observations, get_terms=self.term_by_term_returns
             )
-            if self.actor_critic.value_normalizer is not None:
-                next_value = self.actor_critic.value_normalizer(next_value, True)
         self.rollouts.compute_returns(
             next_value, term_by_term_returns=self.term_by_term_returns
         )
