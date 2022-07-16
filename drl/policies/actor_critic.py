@@ -25,14 +25,12 @@ class ActorCritic(nn.Module):
         self.action_distribution = action_distribution
         self.critic = critic
         self.critic_is_head = critic_is_head
-        if normalize_obs:
-            self.obs_normalizer = RunningMeanStd(self.net.input_shape)
-        else:
-            self.obs_normalizer = None
-        if normalize_value:
-            self.value_normalizer = RunningMeanStd(critic.output_shape)  # used w/ppo.py
-        else:
-            self.value_normalizer = None
+        self.obs_normalizer = (
+            RunningMeanStd(self.net.input_shape) if normalize_obs else None
+        )
+        self.value_normalizer = (
+            RunningMeanStd(critic.output_shape) if normalize_value else None
+        )
 
     def act(self, observations, deterministic=False, get_terms=False):
         value, dist, other = self._process_observations(observations, get_terms)
