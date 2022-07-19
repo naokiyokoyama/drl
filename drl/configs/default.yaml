@@ -16,6 +16,12 @@ ACTOR_CRITIC:
     name: "MLPBase"
     hidden_sizes: [256, 128, 64]
     activation: "elu"
+  action_distribution:
+    name: "GaussianActDist"
+    min_sigma: 1.0e-6
+    max_sigma: 1.0
+    sigma_as_params: True
+    clip_sigma: False
   critic:
     # The output shape of the critic will be determined by the learning algorithm used. Typically, will be 1.
     name: "MLPCritic"
@@ -26,12 +32,6 @@ ACTOR_CRITIC:
     name: "MLPCritic"
     hidden_sizes: [128, 64]
     activation: "elu"
-  action_distribution:
-    name: "GaussianActDist"
-    min_sigma: 1.0e-6
-    max_sigma: 1.0
-    sigma_as_params: True
-    clip_sigma: False
   normalize_obs: True
   normalize_value: True
 RL:
