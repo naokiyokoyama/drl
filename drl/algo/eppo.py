@@ -18,12 +18,11 @@ class EPPO(PPO):
         value_terms_pred = self.actor_critic.head(self.actor_critic.features)
         aux_loss = mse_loss(value_terms_pred, batch["return_terms"])
         self.losses_data["losses/aux_loss"] += aux_loss.item()
-        return aux_loss  # Should be overridden by descendant classes
+        return aux_loss * self.aux_coeff
 
-    # def __init__(self, q_critic_lr, q_coeff, *args, **kwargs):
-    #     self.q_critic_lr = q_critic_lr
-    #     self.q_coeff = q_coeff
-    #     super().__init__(*args, **kwargs)
+    def __init__(self, aux_coeff, *args, **kwargs):
+        self.aux_coeff = aux_coeff
+        super().__init__(*args, **kwargs)
 
     # def setup_optimizer(self, eps):
     #     actor_params, critic_params, q_params = [], [], []
@@ -55,12 +54,11 @@ class EPPO(PPO):
         mask = torch.logical_not(bad).detach()
         return mask
 
-    #
-    # @classmethod
-    # def from_config(cls, config, actor_critic, **kwargs):
-    #     return super().from_config(
-    #         config,
-    #         actor_critic,
-    #         q_critic_lr=config.RL.PPO.critic_lr,
-    #         q_coeff=config.RL.PPO.q_coeff,
-    #     )
+
+    @classmethod
+    def from_config(cls, config, actor_critic, **kwargs):
+        return super().from_config(
+            config,
+            actor_critic,
+            aux_coeff=config.RL.PPO.aux_coeff,
+        )
