@@ -1,4 +1,4 @@
-from typing import Union
+from typing import Union, Optional
 
 import torch.jit
 from torch import nn as nn
@@ -15,27 +15,30 @@ class ActorCriticQ(ActorCritic):
     def __init__(
         self,
         net: NNBase,
+        action_distribution: nn.Module,
         critic: Union[NNBase, nn.Module],
         q_critic: Union[NNBase, nn.Module],
-        action_distribution: nn.Module,
         critic_is_head: bool = False,
+        head: Optional[NNBase] = None,
         normalize_obs: bool = True,
         normalize_value: bool = True,
     ):
         super().__init__(
-            net,
-            critic,
-            action_distribution,
-            critic_is_head,
-            normalize_obs,
-            normalize_value,
+            net=net,
+            action_distribution=action_distribution,
+            critic=critic,
+            critic_is_head=critic_is_head,
+            head=head,
+            normalize_obs=normalize_obs,
+            normalize_value=normalize_value,
         )
         self.q_critic = q_critic
 
     def evaluate_actions(self, observations, action):
         value, action_log_probs, dist = super().evaluate_actions(observations, action)
         q_terms_pred = self.q_critic(torch.cat([observations, dist.rsample()], dim=1))
-        return value, action_log_probs, dist, q_terms_pred
+        # return value, action_log_probs, dist, q_terms_pred
+        return value, action_log_probs, dist
 
     def convert_to_torchscript(self):
         super().convert_to_torchscript()

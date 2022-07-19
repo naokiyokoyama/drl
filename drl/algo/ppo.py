@@ -103,6 +103,7 @@ class PPO(nn.Module):
         action_loss = self.action_loss(action_log_probs, batch)
         value_loss = self.value_loss(values, batch)
         entropy_loss = self.entropy_loss(dist)
+        aux_loss = self.aux_loss(batch)
 
         for v in self.optimizers.values():
             v.zero_grad()
@@ -110,6 +111,7 @@ class PPO(nn.Module):
             0.5 * value_loss * self.value_loss_coef
             + action_loss
             - entropy_loss * self.entropy_coef
+            + aux_loss
         ).backward()
         if self.truncate_grads:
             nn.utils.clip_grad_norm_(self.actor_critic.parameters(), self.max_grad_norm)
@@ -143,6 +145,9 @@ class PPO(nn.Module):
         entropy_loss = dist.entropy().sum(dim=1).mean()
         self.losses_data["losses/entropy"] += entropy_loss.item()
         return entropy_loss
+
+    def aux_loss(self, batch):
+        return 0  # Should be overridden by descendant classes
 
     def get_losses_data(self):
         num_updates = self.ppo_epoch * self.num_mini_batch

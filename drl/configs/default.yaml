@@ -28,6 +28,10 @@ ACTOR_CRITIC:
     hidden_sizes: []
     is_head: True
     activation: "elu"
+  head:
+    name: "None"
+    hidden_sizes: [8]
+    activation: "elu"
   q_critic:
     name: "MLPCritic"
     hidden_sizes: [128, 64]

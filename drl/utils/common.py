@@ -39,6 +39,16 @@ def mse_loss(tensor1, tensor2):
     return F.mse_loss(tensor1, tensor2)
 
 
+def get_num_reward_terms(envs, num_envs):
+    # Count the amount of reward terms by doing a dummy step
+    actions = torch.as_tensor(envs.action_space.sample())
+    if actions.dim() == 1:
+        actions = actions.repeat(num_envs, 1)
+    _, _, _, infos = envs.step(actions)
+    assert "reward_terms" in infos, "Key 'reward_terms' must be in info for EPPO!"
+    num_reward_terms = infos["reward_terms"].shape[1]
+    return num_reward_terms
+
 class MeanReturns:
     def __init__(self, window_size=50):
         self.window_size = window_size

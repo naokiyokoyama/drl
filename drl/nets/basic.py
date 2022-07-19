@@ -62,9 +62,9 @@ class MLPBase(NNBase):  # noqa
         self.mlp = torch.jit.script(self.mlp)
 
     @classmethod
-    def from_config(cls, nn_config, obs_space, *args, **kwargs):
+    def from_config(cls, nn_config, obs_space=None, input_shape=None, *args, **kwargs):
         return cls(
-            input_shape=obs_space.shape,
+            input_shape=input_shape if input_shape is not None else obs_space.shape,
             hidden_sizes=nn_config.hidden_sizes,
             activation=nn_config.activation,
             **kwargs,
@@ -79,3 +79,24 @@ class MLPCritic(MLPBase):  # noqa
         # Remove the final activation layer
         layers = list(self.mlp.children())
         self.mlp = nn.Sequential(*layers[:-1]) if len(layers) > 2 else layers[0]
+
+    @classmethod
+    def from_config(cls, nn_config, obs_space, net, *args, **kwargs):  # noqa
+        input_shape = net.output_shape if nn_config.is_head else None
+        return super().from_config(nn_config, obs_space, input_shape, **kwargs)
+
+
+@drl_registry.register_nn_base
+class MLPCriticTermsHead(MLPCritic):  # noqa
+    @classmethod
+    def from_config(cls, nn_config, net, *args, **kwargs):
+        assert "num_reward_terms" in nn_config
+        return super().from_config(
+            nn_config,
+            None,
+            net,
+            num_outputs=nn_config.num_reward_terms,
+        )
+
+    def get_other(self, features):
+        return {"value_terms_preds": self.forward(features)}
