@@ -19,6 +19,7 @@ class EPPOTrainer(PPOTrainer):
         num_reward_terms = get_num_reward_terms(self.envs, self.num_envs)
         self.config.ACTOR_CRITIC.head["num_reward_terms"] = num_reward_terms
 
+        # Update obs because counting the reward terms requires env resetting
         self.initial_observations = self.preprocess_observations(self.envs.reset())
 
         return actor_critic_cls.from_config(
