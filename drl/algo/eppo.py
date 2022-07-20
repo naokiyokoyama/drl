@@ -43,25 +43,6 @@ class EPPO(PPO):
         self.losses_data["losses/aux_loss"] += aux_loss.item()
         return aux_loss * self.aux_coeff
 
-    # def setup_optimizer(self, eps):
-    #     actor_params, critic_params, q_params = [], [], []
-    #     for name, p in self.actor_critic.named_parameters():
-    #         if not p.requires_grad:
-    #             continue
-    #         elif "q_critic" in name:
-    #             q_params.append(p)
-    #         elif "critic" in name and not self.actor_critic.critic_is_head:
-    #             critic_params.append(p)
-    #         else:
-    #             actor_params.append(p)
-    #     optimizers = {
-    #         "q_critic": Adam(q_params, lr=self.q_critic_lr, eps=eps),
-    #         "actor": Adam(actor_params, lr=self.q_critic_lr, eps=eps),
-    #     }
-    #     if not self.actor_critic.critic_is_head:
-    #         optimizers["critic"] = Adam(q_params, lr=self.q_critic_lr, eps=eps)
-    #     return optimizers
-
     def cherry_pick(self, action_log_probs, batch):
         ratio = torch.exp(action_log_probs - batch["action_log_probs"])
         adv = batch["advantages"].repeat(1, action_log_probs.shape[1])
