@@ -30,7 +30,7 @@ ACTOR_CRITIC:
     activation: "elu"
   head:
     name: "None"
-    hidden_sizes: [8]
+    hidden_sizes: []
     activation: "elu"
   q_critic:
     name: "MLPCritic"
