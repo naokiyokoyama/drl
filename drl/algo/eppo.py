@@ -20,6 +20,9 @@ class EPPO(PPO):
         self.losses_data["losses/aux_loss"] += aux_loss.item()
         return aux_loss * self.aux_coeff
 
+    def value_loss(self, values, batch):
+        return 0.0
+
     def __init__(self, aux_coeff, *args, **kwargs):
         self.aux_coeff = aux_coeff
         super().__init__(*args, **kwargs)
