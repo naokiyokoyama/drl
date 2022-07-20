@@ -62,6 +62,7 @@ RL:
     use_normalized_advantage: True
     q_coeff: 1.0
     q_terms: -1.0
+    aux_coeff: 1.0
   term_by_term_returns: True
 
   num_steps: 16  # rollout length
