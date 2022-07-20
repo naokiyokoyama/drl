@@ -75,6 +75,27 @@ class CustomGaussian:
             return log_probs.sum(1, keepdim=True)
         return log_probs
 
+    def reparameterize_action(self, actions: Tensor):
+        eps = (actions - self.mu) / self.sigma
+        reparam_action = self.mu + self.sigma * eps.detach()
+        return reparam_action
+
+    def log_probs_to_reparam_action(self, actions: Tensor, log_probs: Tensor):
+        detached_sigma = self.sigma.detach()
+        detached_mu = self.mu.detach()
+        error = torch.sqrt(
+            (log_probs + detached_sigma.log() + math.log(math.sqrt(2 * math.pi)))
+            * (-2 * detached_sigma**2)
+        )
+        # error will be completely positive, some will need to be flipped negative
+        error = torch.where(
+            torch.gt(actions - detached_mu, 0),
+            error,
+            error * -1,
+        )
+        reparam_action = error + detached_mu
+        return reparam_action
+
     def entropy(self):
         return 0.5 + 0.5 * math.log(2 * math.pi) + torch.log(self.sigma)
 
