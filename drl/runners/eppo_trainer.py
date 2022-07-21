@@ -35,3 +35,8 @@ class EPPOTrainer(PPOTrainer):
             self.envs.action_space,
             num_reward_terms=num_reward_terms,
         )
+
+    def prepare_rollouts(self, observations):
+        with torch.no_grad():
+            next_value = self.actor_critic.get_value(observations)
+        self.rollouts.compute_returns(next_value, term_by_term=True)

@@ -33,8 +33,8 @@ class ActorCritic(nn.Module):
             RunningMeanStd(critic.output_shape) if normalize_value else None
         )
 
-    def act(self, observations, deterministic=False, get_terms=False):
-        value, dist, other = self._process_observations(observations, get_terms)
+    def act(self, observations, deterministic=False):
+        value, dist, other = self._process_observations(observations)
         actions = dist.deterministic_sample() if deterministic else dist.sample()
         action_log_probs = dist.log_probs(actions)
 
@@ -42,12 +42,12 @@ class ActorCritic(nn.Module):
 
     def evaluate_actions(self, observations, action):
         value, dist, _ = self._process_observations(
-            observations, get_terms=True, unnorm_value=False
+            observations, unnorm_value=False
         )
         action_log_probs = dist.log_probs(action)
         return value, action_log_probs, dist
 
-    def get_value(self, observations, features=None, get_terms=False, unnorm_value=True):
+    def get_value(self, observations, features=None, unnorm_value=True):
         if self.obs_normalizer is not None:
             observations = self.obs_normalizer(observations)
         if self.critic_is_head and features is None:
@@ -55,15 +55,13 @@ class ActorCritic(nn.Module):
         value = self.critic(features if self.critic_is_head else observations)
         if self.value_normalizer is not None and unnorm_value:
             value = self.value_normalizer(value, True)
-        if value.shape[1] > 1 and not get_terms:
-            value = value.sum(1, keepdim=True)
         return value
 
-    def _process_observations(self, observations, get_terms=False, unnorm_value=True):
+    def _process_observations(self, observations, unnorm_value=True):
         if self.obs_normalizer is not None:
             observations = self.obs_normalizer(observations)
         self.features = features = self.net(observations)
-        value = self.get_value(observations, features, get_terms, unnorm_value)
+        value = self.get_value(observations, features, unnorm_value)
         dist = self.action_distribution(features)
         other = self._get_other()
 

@@ -151,19 +151,24 @@ class RolloutStorage:
         self.buffers[0] = self.buffers[self.current_rollout_step_idx]
         self.current_rollout_step_idx = 0
 
-    def compute_returns(self, next_value, term_by_term_returns=False):
-        reward_buffer_key = "reward_terms" if term_by_term_returns else "rewards"
-        assert (
-            next_value.shape[1] == self.buffers[reward_buffer_key].shape[2]
-        ), f"{next_value.shape[1]} != {self.buffers[reward_buffer_key].shape[2]}"
+    def compute_returns(self, next_value, term_by_term=False):
+        reward_buffer_key = "reward_terms" if term_by_term else "rewards"
+        # return_buffer_key = "return_terms" if term_by_term else "returns"
+        return_buffer_key = "returns"
+        # val_buffer_key = "value_terms_preds" if term_by_term else "value_preds"
+        val_buffer_key = "value_preds"
+        assert next_value.shape[1] == self.buffers[reward_buffer_key].shape[2], (
+            f"(next_value, {reward_buffer_key}) "
+            f"{next_value.shape[1]} != {self.buffers[reward_buffer_key].shape[2]}"
+        )
 
         if self.use_gae:
-            self.buffers["value_preds"][self.current_rollout_step_idx] = next_value
-        self.buffers["returns"] = compute_returns(
+            self.buffers[val_buffer_key][self.current_rollout_step_idx] = next_value
+        self.buffers[return_buffer_key] = compute_returns(
             self.current_rollout_step_idx,
             next_value,
             self.buffers[reward_buffer_key],
-            self.buffers["value_preds"],
+            self.buffers[val_buffer_key],
             self.buffers["not_dones"],
             self.use_gae,
             self.gamma,
