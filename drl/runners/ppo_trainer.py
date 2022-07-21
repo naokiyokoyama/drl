@@ -29,7 +29,8 @@ class PPOTrainer(BaseTrainer):
         observations, rewards, dones, infos = self.step_envs(actions)
         other.update(infos)
 
-        value = other["value_terms_preds"].sum(1, keepdims=True)
+        if "value_terms_preds" in other:
+            value = other["value_terms_preds"].sum(1, keepdims=True)
 
         self.rollouts.insert(
             next_observations=observations,
