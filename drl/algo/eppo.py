@@ -11,21 +11,32 @@ from drl.utils.common import mse_loss
 
 # import torch.nn as nn
 # from torch.optim import Adam
+from drl.utils.rollout_storage import RolloutStorage
 
 
 class EPPO(PPO):
+    def __init__(self, aux_coeff, *args, **kwargs):
+        self.aux_coeff = aux_coeff
+        super().__init__(*args, **kwargs)
+
+    def update(self, rollouts: RolloutStorage):
+        if self.actor_critic.head.normalizer is not None:
+            num_terms = rollouts.buffers["return_terms"].shape[-1]
+            rollouts.buffers["return_terms"] = self.actor_critic.head.normalizer(
+                rollouts.buffers["return_terms"].reshape(-1, num_terms)
+            ).reshape(rollouts.num_steps + 1, rollouts._num_envs, -1)
+        return super().update(rollouts)
+
     def aux_loss(self, batch):
-        value_terms_pred = self.actor_critic.head(self.actor_critic.features)
+        value_terms_pred = self.actor_critic.head(
+            self.actor_critic.features, unnorm=False
+        )
         aux_loss = mse_loss(value_terms_pred, batch["return_terms"])
         self.losses_data["losses/aux_loss"] += aux_loss.item()
         return aux_loss * self.aux_coeff
 
     def value_loss(self, values, batch):
         return 0.0
-
-    def __init__(self, aux_coeff, *args, **kwargs):
-        self.aux_coeff = aux_coeff
-        super().__init__(*args, **kwargs)
 
     # def setup_optimizer(self, eps):
     #     actor_params, critic_params, q_params = [], [], []
@@ -56,7 +67,6 @@ class EPPO(PPO):
         )
         mask = torch.logical_not(bad).detach()
         return mask
-
 
     @classmethod
     def from_config(cls, config, actor_critic, **kwargs):
