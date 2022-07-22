@@ -25,7 +25,6 @@ class ActorCritic(nn.Module):
         critic_is_head: bool = True,
         head: Optional[NNBase] = None,
         normalize_obs: bool = True,
-        normalize_value: bool = True,
     ):
         """
         :param net: "Encoder" net that passes features into all heads
@@ -45,43 +44,36 @@ class ActorCritic(nn.Module):
         self.obs_normalizer = (
             RunningMeanStd(self.net.input_shape) if normalize_obs else None
         )
-        self.value_normalizer = (
-            RunningMeanStd(critic.output_shape) if normalize_value else None
-        )
 
-    def act(self, observations, deterministic=False, get_terms=False):
-        value, dist, other = self._process_observations(observations, get_terms)
+    def act(self, observations, deterministic=False):
+        value, dist, other = self._process_observations(observations)
         actions = dist.deterministic_sample() if deterministic else dist.sample()
         action_log_probs = dist.log_probs(actions)
 
         return value, actions, action_log_probs, other
 
     def evaluate_actions(self, observations, action):
-        value, dist, _ = self._process_observations(
-            observations, get_terms=True, unnorm_value=False
-        )
+        value, dist, _ = self._process_observations(observations, unnorm_value=False)
         action_log_probs = dist.log_probs(action)
         return value, action_log_probs, dist
 
     def get_value(
-        self, observations, features=None, get_terms=False, unnorm_value=True
+        self, observations, features=None, unnorm_value=True
     ):
         if self.obs_normalizer is not None:
             observations = self.obs_normalizer(observations)
         if self.critic_is_head and features is None:
             features = self.net(observations)
-        value = self.critic(features if self.critic_is_head else observations)
-        if self.value_normalizer is not None and unnorm_value:
-            value = self.value_normalizer(value, True)
-        if value.shape[1] > 1 and not get_terms:
-            value = value.sum(1, keepdim=True)
+        value = self.critic(
+            features if self.critic_is_head else observations, unnorm=unnorm_value
+        )
         return value
 
-    def _process_observations(self, observations, get_terms=False, unnorm_value=True):
+    def _process_observations(self, observations, unnorm_value=True):
         if self.obs_normalizer is not None:
             observations = self.obs_normalizer(observations)
         self.features = features = self.net(observations)
-        value = self.get_value(observations, features, get_terms, unnorm_value)
+        value = self.get_value(observations, features, unnorm_value)
         dist = self.action_distribution(features)
         other = self.get_other()
 
@@ -139,7 +131,6 @@ class ActorCritic(nn.Module):
             critic_is_head=ac_cfg.critic.is_head,
             head=head,
             normalize_obs=ac_cfg.normalize_obs,
-            normalize_value=ac_cfg.normalize_value,
             **kwargs,
         )
 

@@ -5,6 +5,7 @@ import torch
 import torch.nn as nn
 
 from drl.utils.registry import drl_registry
+from drl.utils.running_mean_std import RunningMeanStd
 
 
 class NNBase(nn.Module):
@@ -73,17 +74,40 @@ class MLPBase(NNBase):  # noqa
 
 @drl_registry.register_nn_base
 class MLPCritic(MLPBase):  # noqa
-    def __init__(self, input_shape, hidden_sizes, num_outputs=1, activation="elu"):
+    def __init__(
+        self,
+        input_shape,
+        hidden_sizes,
+        num_outputs=1,
+        activation="elu",
+        normalize_value=False,
+    ):
         all_sizes = [*hidden_sizes, num_outputs]
         super().__init__(input_shape, all_sizes, activation)
         # Remove the final activation layer
         layers = list(self.mlp.children())
         self.mlp = nn.Sequential(*layers[:-1]) if len(layers) > 2 else layers[0]
+        self.value_normalizer = (
+            RunningMeanStd(self.output_shape) if normalize_value else None
+        )
+
+    def forward(self, x, unnorm: bool = True):
+        x = super().forward(x)
+        if self.value_normalizer is not None and unnorm:
+            return self.value_normalizer(x, unnorm=True)
+        return x
+
 
     @classmethod
     def from_config(cls, nn_config, obs_space, net, *args, **kwargs):  # noqa
         input_shape = net.output_shape if nn_config.is_head else None
-        return super().from_config(nn_config, obs_space, input_shape, **kwargs)
+        return super().from_config(
+            nn_config,
+            obs_space,
+            input_shape,
+            normalize_value=nn_config.normalize_value,
+            **kwargs,
+        )
 
 
 @drl_registry.register_nn_base

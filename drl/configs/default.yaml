@@ -28,17 +28,18 @@ ACTOR_CRITIC:
     hidden_sizes: []
     is_head: True
     activation: "elu"
+    normalize_value: True
   head:
     name: "None"
     hidden_sizes: []
     is_head: True
     activation: "elu"
+    normalize_value: True
   q_critic:
     name: "MLPCritic"
     hidden_sizes: [128, 64]
     activation: "elu"
   normalize_obs: True
-  normalize_value: True
 RL:
   scheduler:
     name: AdaptiveScheduler
