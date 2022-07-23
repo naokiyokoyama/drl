@@ -35,9 +35,6 @@ class EPPO(PPO):
         self.losses_data["losses/aux_loss"] += aux_loss.item()
         return aux_loss * self.aux_coeff
 
-    def value_loss(self, values, batch):
-        return 0.0
-
     # def setup_optimizer(self, eps):
     #     actor_params, critic_params, q_params = [], [], []
     #     for name, p in self.actor_critic.named_parameters():

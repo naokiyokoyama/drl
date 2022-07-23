@@ -29,11 +29,7 @@ class EPPOTrainer(PPOTrainer):
         )
 
     def prepare_rollouts(self, observations):
-        # super().prepare_rollouts(observations)
+        super().prepare_rollouts(observations)
         with torch.no_grad():
             next_value_terms = self.actor_critic.head(self.actor_critic.features)
         self.rollouts.compute_returns(next_value_terms, term_by_term_returns=True)
-
-        with torch.no_grad():
-            next_value = next_value_terms.sum(1, keepdims=True)
-        self.rollouts.compute_returns(next_value)
