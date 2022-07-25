@@ -81,7 +81,7 @@ class PPO(nn.Module):
             rollouts.normalize_values(self.actor_critic.critic.normalizer)
         for epoch in range(self.ppo_epoch):
             for idx, batch in enumerate(generator(advantages, self.num_mini_batch)):
-                self.single_update(batch)
+                self.update_policy(batch)
         rollouts.after_update()
         return self.get_losses_data()
 
@@ -94,7 +94,7 @@ class PPO(nn.Module):
             return (advantages - advantages.mean()) / (advantages.std() + EPS_PPO)
         return advantages
 
-    def single_update(self, batch):
+    def update_policy(self, batch):
         (
             values,
             action_log_probs,
