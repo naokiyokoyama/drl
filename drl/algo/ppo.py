@@ -107,7 +107,7 @@ class PPO(nn.Module):
     def update_policy(self, batch, values, action_log_probs, dist):
         action_loss = self.action_loss(action_log_probs, batch)
         if self.actor_critic.critic_is_head:
-            value_loss = self.value_loss(values, batch)
+            value_loss = self.value_loss(batch, values)
         else:
             value_loss = 0.0
         entropy_loss = self.entropy_loss(dist)
