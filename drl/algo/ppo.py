@@ -119,21 +119,25 @@ class PPO(nn.Module):
             - entropy_loss * self.entropy_coef
             + aux_loss
         )
-        self.update_weights(loss)
+        self.update_weights(loss, ["actor"])
 
         self.advance_schedule(batch)
 
     def update_critic(self, batch, values):
-        self.update_weights(0.5 * self.value_loss(values, batch) * self.value_loss_coef)
+        self.update_weights(
+            0.5 * self.value_loss(values, batch) * self.value_loss_coef, ["critic"]
+        )
 
-    def update_weights(self, loss):
-        for opt in self.optimizers.values():
-            opt.zero_grad()
+    def update_weights(self, loss, opt_keys):
+        for name, opt in self.optimizers.items():
+            if name in opt_keys:
+                opt.zero_grad()
         loss.backward()
         if self.truncate_grads:
             nn.utils.clip_grad_norm_(self.actor_critic.parameters(), self.max_grad_norm)
-        for opt in self.optimizers.values():
-            opt.step()
+        for name, opt in self.optimizers.items():
+            if name in opt_keys:
+                opt.step()
 
     def action_loss(self, action_log_probs, batch):
         ratio = torch.exp(action_log_probs - batch["action_log_probs"])
