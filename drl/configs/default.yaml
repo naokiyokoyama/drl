@@ -48,7 +48,8 @@ RL:
     max_lr: 1.0e-2
   PPO:
     clip_param: 0.2
-    ppo_epoch: 4
+    policy_epoch: 4
+    critic_epoch: 4
     num_mini_batch: 2
     value_loss_coef: 2.0
     entropy_coef: 0.000

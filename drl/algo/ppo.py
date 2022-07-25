@@ -19,7 +19,8 @@ class PPO(nn.Module):
         actor_critic,
         scheduler,
         clip_param,
-        ppo_epoch,
+        policy_epoch,
+        critic_epoch,
         num_mini_batch,
         value_loss_coef,
         entropy_coef,
@@ -37,7 +38,9 @@ class PPO(nn.Module):
         self.scheduler = scheduler
 
         self.clip_param = clip_param
-        self.ppo_epoch = ppo_epoch
+        self.policy_epoch = policy_epoch
+        self.critic_epoch = 0 if self.actor_critic.critic_is_head else critic_epoch
+        self.ppo_epoch = max(policy_epoch, critic_epoch)
         self.num_mini_batch = num_mini_batch
 
         self.value_loss_coef = value_loss_coef
@@ -52,11 +55,13 @@ class PPO(nn.Module):
         self.optimizers = self.setup_optimizer(eps)
         self.losses_data = defaultdict(float)
 
-    def setup_optimizer(self, eps):
+    def setup_optimizer(self, eps: float):
+        # Only one optimizer is needed if critic is part of policy
         if self.actor_critic.critic_is_head:
             params = [p for p in self.actor_critic.parameters() if p.requires_grad]
             return {"actor": Adam(params, lr=self.actor_lr, eps=eps)}
 
+        # If actor and critic are separate, create two optimizers, one for each
         actor_params, critic_params = [], []
         for name, p in self.actor_critic.named_parameters():
             if not p.requires_grad:
@@ -80,46 +85,55 @@ class PPO(nn.Module):
             # MUST be run AFTER get_advantages() due to mutation of "returns" buffer
             rollouts.normalize_values(self.actor_critic.critic.normalizer)
         for epoch in range(self.ppo_epoch):
-            for idx, batch in enumerate(generator(advantages, self.num_mini_batch)):
-                self.update_policy(batch)
+            for batch in generator(advantages, self.num_mini_batch):
+                values, action_log_probs, dist = self.actor_critic.evaluate_actions(
+                    batch["observations"], batch["actions"]
+                )
+                if epoch < self.policy_epoch:
+                    self.update_policy(batch, values, action_log_probs, dist)
+                if epoch < self.critic_epoch and not self.actor_critic.critic_is_head:
+                    self.update_critic(values, batch)
         rollouts.after_update()
         return self.get_losses_data()
 
     def get_advantages(self, rollouts: RolloutStorage) -> Tensor:
-        advantages = (
-            rollouts.buffers["returns"][:-1].sum(-1, keepdims=True)
-            - rollouts.buffers["value_preds"][:-1].sum(-1, keepdims=True)
-        )
+        advantages = rollouts.buffers["returns"][:-1].sum(
+            -1, keepdims=True
+        ) - rollouts.buffers["value_preds"][:-1].sum(-1, keepdims=True)
         if self.use_normalized_advantage:
             return (advantages - advantages.mean()) / (advantages.std() + EPS_PPO)
         return advantages
 
-    def update_policy(self, batch):
-        (
-            values,
-            action_log_probs,
-            dist,
-        ) = self.actor_critic.evaluate_actions(batch["observations"], batch["actions"])
-
+    def update_policy(self, batch, values, action_log_probs, dist):
         action_loss = self.action_loss(action_log_probs, batch)
-        value_loss = self.value_loss(values, batch)
+        if self.actor_critic.critic_is_head:
+            value_loss = self.value_loss(values, batch)
+        else:
+            value_loss = 0.0
         entropy_loss = self.entropy_loss(dist)
         aux_loss = self.aux_loss(batch)
 
-        for v in self.optimizers.values():
-            v.zero_grad()
-        (
+        loss = (
             0.5 * value_loss * self.value_loss_coef
             + action_loss
             - entropy_loss * self.entropy_coef
             + aux_loss
-        ).backward()
-        if self.truncate_grads:
-            nn.utils.clip_grad_norm_(self.actor_critic.parameters(), self.max_grad_norm)
-        for v in self.optimizers.values():
-            v.step()
+        )
+        self.update_weights(loss)
 
         self.advance_schedule(batch)
+
+    def update_critic(self, batch, values):
+        self.update_weights(0.5 * self.value_loss(values, batch) * self.value_loss_coef)
+
+    def update_weights(self, loss):
+        for opt in self.optimizers.values():
+            opt.zero_grad()
+        loss.backward()
+        if self.truncate_grads:
+            nn.utils.clip_grad_norm_(self.actor_critic.parameters(), self.max_grad_norm)
+        for opt in self.optimizers.values():
+            opt.step()
 
     def action_loss(self, action_log_probs, batch):
         ratio = torch.exp(action_log_probs - batch["action_log_probs"])
@@ -129,7 +143,7 @@ class PPO(nn.Module):
         self.losses_data["losses/a_loss"] += action_loss.item()
         return action_loss
 
-    def value_loss(self, values, batch):
+    def value_loss(self, batch, values):
         if self.use_clipped_value_loss:
             value_pred_clipped = batch["value_preds"] + (
                 values - batch["value_preds"]
@@ -170,7 +184,8 @@ class PPO(nn.Module):
             actor_critic=actor_critic,
             scheduler=scheduler_cls.from_config(config),
             clip_param=config.RL.PPO.clip_param,
-            ppo_epoch=config.RL.PPO.ppo_epoch,
+            policy_epoch=config.RL.PPO.policy_epoch,
+            critic_epoch=config.RL.PPO.critic_epoch,
             num_mini_batch=config.RL.PPO.num_mini_batch,
             value_loss_coef=config.RL.PPO.value_loss_coef,
             entropy_coef=config.RL.PPO.entropy_coef,
