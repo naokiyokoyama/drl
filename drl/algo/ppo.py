@@ -75,7 +75,6 @@ class PPO(nn.Module):
         return {"actor": actor_optim, "critic": critic_optim}
 
     def update(self, rollouts: RolloutStorage) -> Dict:
-        advantages = self.get_advantages(rollouts)
         self.losses_data = defaultdict(float)  # clear the loss data
         if self.actor_critic.is_recurrent:
             generator = rollouts.recurrent_generator
@@ -85,7 +84,7 @@ class PPO(nn.Module):
             # MUST be run AFTER get_advantages() due to mutation of "returns" buffer
             rollouts.normalize_values(self.actor_critic.critic.normalizer)
         for epoch in range(self.ppo_epoch):
-            for batch in generator(advantages, self.num_mini_batch):
+            for batch in generator(self.num_mini_batch):
                 values, action_log_probs, dist = self.actor_critic.evaluate_actions(
                     batch["observations"], batch["actions"]
                 )
@@ -95,14 +94,6 @@ class PPO(nn.Module):
                     self.update_critic(values, batch)
         rollouts.after_update()
         return self.get_losses_data()
-
-    def get_advantages(self, rollouts: RolloutStorage) -> Tensor:
-        advantages = rollouts.buffers["returns"][:-1].sum(
-            -1, keepdims=True
-        ) - rollouts.buffers["value_preds"][:-1].sum(-1, keepdims=True)
-        if self.use_normalized_advantage:
-            return (advantages - advantages.mean()) / (advantages.std() + EPS_PPO)
-        return advantages
 
     def update_policy(self, batch, values, action_log_probs, dist):
         action_loss = self.action_loss(action_log_probs, batch)

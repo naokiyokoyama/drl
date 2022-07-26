@@ -13,6 +13,7 @@ import torch
 from drl.utils.tensor_dict import TensorDict
 
 TensorLike = Union[torch.Tensor, np.ndarray]
+EPS = 1e-5
 
 
 class RolloutStorage:
@@ -175,6 +176,16 @@ class RolloutStorage:
             self.buffers.get("time_outs", None),
         )
 
+    def compute_advantages(self, normalize: bool):
+        self.buffers["advantages"] = (
+            self.buffers["returns"] - self.buffers["value_preds"]
+        )
+
+        if normalize:
+            self.buffers["advantages"] = (
+                self.buffers["advantages"] - self.buffers["advantages"].mean()
+            ) / (self.buffers["advantages"].std() + EPS)
+
     def recurrent_generator(self, advantages, num_mini_batch) -> TensorDict:
         num_environments = advantages.size(1)
         assert num_environments >= num_mini_batch, (
@@ -194,7 +205,7 @@ class RolloutStorage:
 
             yield batch.map(lambda v: v.flatten(0, 1))
 
-    def feed_forward_generator(self, advantages, num_mini_batch) -> TensorDict:
+    def feed_forward_generator(self, num_mini_batch) -> TensorDict:
         batch_size = self._num_envs * self.num_steps
         assert batch_size >= num_mini_batch, (
             f"PPO requires the number of envs ({self._num_envs}) "
@@ -202,11 +213,8 @@ class RolloutStorage:
             "to be greater than or equal to the number"
             f"of PPO mini batches ({num_mini_batch})."
         )
-
         for inds in torch.randperm(self.current_rollout_step_idx).chunk(num_mini_batch):
             batch = self.buffers[inds]
-            batch["advantages"] = advantages[inds]
-
             yield batch.map(lambda v: v.flatten(0, 1))
 
     def normalize_values(self, value_normalizer):

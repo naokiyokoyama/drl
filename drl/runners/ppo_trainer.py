@@ -48,3 +48,4 @@ class PPOTrainer(BaseTrainer):
         with torch.no_grad():
             next_value = self.actor_critic.get_value(observations)
         self.rollouts.compute_returns(next_value)
+        self.rollouts.compute_advantages(normalize=self.algo.use_normalized_advantage)
