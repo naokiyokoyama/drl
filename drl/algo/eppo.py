@@ -27,7 +27,7 @@ class EPPO(PPO):
             ).reshape(rollouts.num_steps + 1, rollouts._num_envs, -1)
         return super().update(rollouts)
 
-    def aux_loss(self, batch):
+    def aux_loss(self, batch, values, action_log_probs, dist):
         value_terms_pred = self.actor_critic.head(
             self.actor_critic.features, unnorm=False
         )

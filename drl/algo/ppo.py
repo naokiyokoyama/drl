@@ -102,7 +102,7 @@ class PPO(nn.Module):
         else:
             value_loss = 0.0
         entropy_loss = self.entropy_loss(dist)
-        aux_loss = self.aux_loss(batch)
+        aux_loss = self.aux_loss(batch, values, action_log_probs, dist)
 
         loss = (
             0.5 * value_loss * self.value_loss_coef
@@ -156,7 +156,7 @@ class PPO(nn.Module):
         self.losses_data["losses/entropy"] += entropy_loss.item()
         return entropy_loss
 
-    def aux_loss(self, batch):
+    def aux_loss(self, batch, values, action_log_probs, dist):
         return 0  # Should be overridden by descendant classes
 
     def get_losses_data(self):
