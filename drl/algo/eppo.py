@@ -31,6 +31,9 @@ class EPPO(PPO):
         value_terms_pred = self.actor_critic.head(
             self.actor_critic.features, unnorm=False
         )
+        mask = self.cherry_pick(action_log_probs, batch)
+        mask_repeated = mask.repeat(1, value_terms_pred.shape[1])
+        value_terms_pred = value_terms_pred * mask_repeated
         aux_loss = mse_loss(value_terms_pred, batch["return_terms"])
         self.losses_data["losses/aux_loss"] += aux_loss.item()
         return aux_loss * self.aux_coeff
