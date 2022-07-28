@@ -64,7 +64,7 @@ class ActorCritic(nn.Module):
             observations = self.obs_normalizer(observations)
         if self.critic_is_head and features is None:
             features = self.net(observations)
-        value = self.critic(
+        value = self.critic.get_value(
             features if self.critic_is_head else observations, unnorm=unnorm_value
         )
         return value
@@ -89,6 +89,7 @@ class ActorCritic(nn.Module):
             other["critic_rnn_hx"] = self.critic.rnn_hx
         if self.action_distribution.name == "GaussianActDist":
             other["mu_sigma"] = self.action_distribution.output_mu_sigma
+        other.update(self.critic.get_other(self.features))
         if self.head is not None:
             other.update(self.head.get_other(self.features))
         return other

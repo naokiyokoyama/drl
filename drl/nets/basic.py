@@ -62,6 +62,9 @@ class MLPBase(NNBase):  # noqa
     def convert_to_torchscript(self):
         self.mlp = torch.jit.script(self.mlp)
 
+    def get_other(self, *args, **kwargs):
+        return {}
+
     @classmethod
     def from_config(cls, nn_config, obs_space=None, input_shape=None, *args, **kwargs):
         return cls(
@@ -90,6 +93,9 @@ class MLPCritic(MLPBase):  # noqa
         self.normalizer = (
             RunningMeanStd(self.output_shape) if normalize_value else None
         )
+
+    def get_value(self, x, unnorm: bool = True):
+        return self.forward(x, unnorm)
 
     def forward(self, x, unnorm: bool = True):
         x = super().forward(x)
@@ -121,6 +127,9 @@ class MLPCriticTermsHead(MLPCritic):  # noqa
             net,
             num_outputs=nn_config.num_reward_terms,
         )
+
+    def get_value(self, x, unnorm: bool = True):
+        return self.forward(x, unnorm).sum(1, keepdims=True)
 
     def get_other(self, features):
         return {"value_terms_preds": self.forward(features)}
