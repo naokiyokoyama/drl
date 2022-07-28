@@ -31,15 +31,7 @@ class EPPO(PPO):
         value_terms_pred = self.actor_critic.head(
             self.actor_critic.features, unnorm=False
         )
-
-        value_terms_pred_clipped = batch["return_terms"] + (
-            value_terms_pred - batch["return_terms"]
-        ).clamp(-self.clip_param, self.clip_param)
-        aux_loss = (value_terms_pred - batch["return_terms"]).pow(2)
-        aux_loss_clipped = (value_terms_pred_clipped - batch["return_terms"]).pow(2)
-        aux_loss = torch.max(aux_loss, aux_loss_clipped).mean()
-
-        # aux_loss = mse_loss(value_terms_pred, batch["return_terms"])
+        aux_loss = mse_loss(value_terms_pred, batch["return_terms"])
         self.losses_data["losses/aux_loss"] += aux_loss.item()
         return aux_loss * self.aux_coeff
 
