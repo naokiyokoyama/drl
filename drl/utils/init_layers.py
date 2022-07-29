@@ -15,5 +15,6 @@ def zero_all_bias(module: nn.Module):
 @drl_registry.register_init_layer
 def orthogonal_all_weights(module: nn.Module):
     for m in module.modules():
-        if hasattr(m, "weights"):
-            torch.nn.init.orthogonal_(m.weights, gain=np.sqrt(2))
+        if hasattr(m, "weight"):
+            torch.nn.init.orthogonal_(m.weight, gain=np.sqrt(2))
+
