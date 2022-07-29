@@ -90,9 +90,7 @@ class MLPCritic(MLPBase):  # noqa
         # Remove the final activation layer
         layers = list(self.mlp.children())
         self.mlp = nn.Sequential(*layers[:-1]) if len(layers) > 2 else layers[0]
-        self.normalizer = (
-            RunningMeanStd(self.output_shape) if normalize_value else None
-        )
+        self.normalizer = RunningMeanStd(self.output_shape) if normalize_value else None
 
     def get_value(self, x, unnorm: bool = True):
         return self.forward(x, unnorm)
@@ -102,7 +100,6 @@ class MLPCritic(MLPBase):  # noqa
         if self.normalizer is not None and unnorm:
             return self.normalizer(x, unnorm=True)
         return x
-
 
     @classmethod
     def from_config(cls, nn_config, obs_space, net, *args, **kwargs):  # noqa
