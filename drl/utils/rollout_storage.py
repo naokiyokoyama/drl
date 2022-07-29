@@ -104,6 +104,7 @@ class RolloutStorage:
 
     def to(self, device):
         self.buffers.map_in_place(lambda v: v.to(device))
+        self.device = device
 
     def insert(
         self,
