@@ -76,7 +76,6 @@ class PPO(nn.Module):
 
     def update(self, rollouts: RolloutStorage) -> Dict:
         advantages = self.get_advantages(rollouts)
-        self.losses_data = defaultdict(float)  # clear the loss data
         if self.actor_critic.is_recurrent:
             generator = rollouts.recurrent_generator
         else:
@@ -84,6 +83,7 @@ class PPO(nn.Module):
         if self.actor_critic.critic.normalizer is not None:
             # MUST be run AFTER get_advantages() due to mutation of "returns" buffer
             rollouts.normalize_values(self.actor_critic.critic.normalizer)
+        self.losses_data = defaultdict(float)  # clear the loss data
         for epoch in range(self.ppo_epoch):
             for batch in generator(advantages, self.num_mini_batch):
                 values, action_log_probs, dist = self.actor_critic.evaluate_actions(
