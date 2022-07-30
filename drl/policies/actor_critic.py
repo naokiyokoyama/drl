@@ -119,7 +119,7 @@ class ActorCritic(nn.Module):
         if head_cls is None:
             head = None
         else:
-            head = head_cls.from_config(ac_cfg.head, net)
+            head = head_cls.from_config(ac_cfg.head, critic_obs_space, net)
 
         return cls(
             net=net,

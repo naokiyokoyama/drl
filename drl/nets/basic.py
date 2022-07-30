@@ -116,11 +116,11 @@ class MLPCritic(MLPBase):  # noqa
 @drl_registry.register_nn_base
 class MLPCriticTermsHead(MLPCritic):  # noqa
     @classmethod
-    def from_config(cls, nn_config, net, *args, **kwargs):
+    def from_config(cls, nn_config, obs_space, net, *args, **kwargs):
         assert "num_reward_terms" in nn_config
         return super().from_config(
             nn_config,
-            None,
+            obs_space,
             net,
             num_outputs=nn_config.num_reward_terms,
         )
