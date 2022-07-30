@@ -16,6 +16,7 @@ class PPOTrainer(BaseTrainer):
         self.rollouts = RolloutStorage.from_config(
             self.config, self.num_envs, self.device, self.initial_observations
         )
+        self.curr_step = 0
 
     def step(self, observations):
         with torch.no_grad():
@@ -27,6 +28,7 @@ class PPOTrainer(BaseTrainer):
             ) = self.actor_critic.act(observations)
 
         observations, rewards, dones, infos = self.step_envs(actions)
+        self.curr_step += 1
         other.update(infos)
 
         self.rollouts.insert(
