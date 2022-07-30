@@ -54,9 +54,7 @@ class ActorCritic(nn.Module):
         return value, actions, action_log_probs, other
 
     def evaluate_actions(self, observations, action):
-        value, dist, _ = self._process_observations(
-            observations, unnorm_value=False, sum_terms=False
-        )
+        value, dist, _ = self._process_observations(observations, unnorm_value=False)
         action_log_probs = dist.log_probs(action)
         return value, action_log_probs, dist
 
@@ -66,16 +64,14 @@ class ActorCritic(nn.Module):
         features: Optional[torch.Tensor] = None,
         unnorm_value: bool = True,
         all_values: bool = False,
-        sum_terms: bool = True,
     ):
         if self.obs_normalizer is not None:
             observations = self.obs_normalizer(observations)
         if self.critic_is_head and features is None:
             features = self.net(observations)
-        value = self.critic.get_value(
+        value = self.critic(
             features if self.critic_is_head else observations,
             unnorm=unnorm_value,
-            sum_terms=not all_values and sum_terms,
         )
         if all_values:
             return self.get_value_dict(value, features)
@@ -96,15 +92,11 @@ class ActorCritic(nn.Module):
             )
         return values_dict
 
-    def _process_observations(
-        self, observations, unnorm_value: bool = True, sum_terms: bool = True
-    ):
+    def _process_observations(self, observations, unnorm_value: bool = True):
         if self.obs_normalizer is not None:
             observations = self.obs_normalizer(observations)
         self.features = features = self.net(observations)
-        value = self.get_value(
-            observations, features, unnorm_value, sum_terms=sum_terms
-        )
+        value = self.get_value(observations, features, unnorm_value)
         dist = self.action_distribution(features)
         other = self.get_other()
 
@@ -120,7 +112,6 @@ class ActorCritic(nn.Module):
             other["critic_rnn_hx"] = self.critic.rnn_hx
         if self.action_distribution.name == "GaussianActDist":
             other["mu_sigma"] = self.action_distribution.output_mu_sigma
-        other.update(self.critic.get_other(self.features))
         if self.head is not None:
             other.update(self.head.get_other(self.features))
         return other

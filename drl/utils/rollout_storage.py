@@ -120,6 +120,10 @@ class RolloutStorage:
         other,
         advance=True,
     ):
+        if value_preds.shape[1] > 1:
+            other["value_terms_preds"] = value_preds.clone()
+            value_preds = value_preds.sum(1, keepdims=True)
+
         # Automatically try to reshape rewards if they seem squeezed
         current_step = dict(
             actions=actions,

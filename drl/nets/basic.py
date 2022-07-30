@@ -94,9 +94,6 @@ class MLPCritic(MLPBase):  # noqa
         self.mlp = nn.Sequential(*layers[:-1]) if len(layers) > 2 else layers[0]
         self.normalizer = RunningMeanStd(self.output_shape) if normalize_value else None
 
-    def get_value(self, x, unnorm: bool = True, *args, **kwargs):
-        return self.forward(x, unnorm)
-
     def forward(self, x, unnorm: bool = True):
         x = super().forward(x)
         if self.normalizer is not None and unnorm:
@@ -128,14 +125,6 @@ class MLPCriticTermsHead(MLPCritic):  # noqa
             net,
             num_outputs=nn_config.num_reward_terms,
         )
-
-    def get_value(
-        self, x, unnorm: bool = True, sum_terms: bool = True, *args, **kwargs
-    ):
-        value_terms_preds = self.forward(x, unnorm)
-        if sum_terms:
-            return value_terms_preds.sum(1, keepdims=True)
-        return value_terms_preds
 
     def get_other(self, features):
         return {"value_terms_preds": self.forward(features)}
