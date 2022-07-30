@@ -77,6 +77,8 @@ class MLPBase(NNBase):  # noqa
 
 @drl_registry.register_nn_base
 class MLPCritic(MLPBase):  # noqa
+    target_key = "returns"
+
     def __init__(
         self,
         input_shape,
@@ -92,7 +94,7 @@ class MLPCritic(MLPBase):  # noqa
         self.mlp = nn.Sequential(*layers[:-1]) if len(layers) > 2 else layers[0]
         self.normalizer = RunningMeanStd(self.output_shape) if normalize_value else None
 
-    def get_value(self, x, unnorm: bool = True):
+    def get_value(self, x, unnorm: bool = True, *args, **kwargs):
         return self.forward(x, unnorm)
 
     def forward(self, x, unnorm: bool = True):
@@ -115,6 +117,8 @@ class MLPCritic(MLPBase):  # noqa
 
 @drl_registry.register_nn_base
 class MLPCriticTermsHead(MLPCritic):  # noqa
+    target_key = "return_terms"
+
     @classmethod
     def from_config(cls, nn_config, obs_space, net, *args, **kwargs):
         assert "num_reward_terms" in nn_config
@@ -125,8 +129,13 @@ class MLPCriticTermsHead(MLPCritic):  # noqa
             num_outputs=nn_config.num_reward_terms,
         )
 
-    def get_value(self, x, unnorm: bool = True):
-        return self.forward(x, unnorm).sum(1, keepdims=True)
+    def get_value(
+        self, x, unnorm: bool = True, sum_terms: bool = True, *args, **kwargs
+    ):
+        value_terms_preds = self.forward(x, unnorm)
+        if sum_terms:
+            return value_terms_preds.sum(1, keepdims=True)
+        return value_terms_preds
 
     def get_other(self, features):
         return {"value_terms_preds": self.forward(features)}

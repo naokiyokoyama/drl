@@ -80,9 +80,7 @@ class PPO(nn.Module):
             generator = rollouts.recurrent_generator
         else:
             generator = rollouts.feed_forward_generator
-        if self.actor_critic.critic.normalizer is not None:
-            # MUST be run AFTER get_advantages() due to mutation of "returns" buffer
-            rollouts.normalize_values(self.actor_critic.critic.normalizer)
+        rollouts.normalize_values(self.actor_critic)
         self.losses_data = defaultdict(float)  # clear the loss data
         for epoch in range(self.ppo_epoch):
             for batch in generator(advantages, self.num_mini_batch):
@@ -113,12 +111,7 @@ class PPO(nn.Module):
         entropy_loss = self.entropy_loss(dist)
         aux_loss = self.aux_loss(batch, values, action_log_probs, dist)
 
-        loss = (
-            0.5 * value_loss * self.value_loss_coef
-            + action_loss
-            - entropy_loss * self.entropy_coef
-            + aux_loss
-        )
+        loss = 0.5 * value_loss + action_loss + aux_loss - entropy_loss
         self.update_weights(loss, ["actor"])
 
         self.advance_schedule(batch)
@@ -148,20 +141,23 @@ class PPO(nn.Module):
         return action_loss
 
     def value_loss(self, batch, values):
+        key = self.actor_critic.critic.target_key
+        v_key = "value_preds" if key == "returns" else "value_terms_preds"
         if self.use_clipped_value_loss:
-            value_pred_clipped = batch["value_preds"] + (
-                values - batch["value_preds"]
+            value_pred_clipped = batch[v_key] + (
+                values - batch[v_key]
             ).clamp(-self.clip_param, self.clip_param)
-            value_losses = (values - batch["returns"]).pow(2)
-            value_losses_clipped = (value_pred_clipped - batch["returns"]).pow(2)
+            value_losses = (values - batch[key]).pow(2)
+            value_losses_clipped = (value_pred_clipped - batch[key]).pow(2)
             value_loss = torch.max(value_losses, value_losses_clipped).mean()
         else:
-            value_loss = mse_loss(values, batch["returns"])
+            value_loss = mse_loss(values, batch[key])
+        value_loss = value_loss * self.value_loss_coef
         self.losses_data["losses/c_loss"] += value_loss.item()
         return value_loss
 
     def entropy_loss(self, dist):
-        entropy_loss = dist.entropy().sum(dim=1).mean()
+        entropy_loss = dist.entropy().sum(dim=1).mean() * self.entropy_coef
         self.losses_data["losses/entropy"] += entropy_loss.item()
         return entropy_loss
 

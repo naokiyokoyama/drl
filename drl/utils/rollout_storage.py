@@ -37,6 +37,9 @@ class RolloutStorage:
         self.gamma = gamma
         self.tau = tau
         self.value_bootstrap = value_bootstrap
+        self.value_normalizer = None
+        self.value_terms_normalizer = None
+        self.init_normalizers = False
 
         # We can definitively define the shapes of these sub-buffers without a sample
         self.buffers["rewards"] = torch.zeros(num_steps + 1, num_envs, 1, device=device)
@@ -152,10 +155,10 @@ class RolloutStorage:
         self.buffers[0] = self.buffers[self.current_rollout_step_idx]
         self.current_rollout_step_idx = 0
 
-    def compute_returns(self, next_value, term_by_term_returns=False):
-        reward_buffer_key = "reward_terms" if term_by_term_returns else "rewards"
-        return_buffer_key = "return_terms" if term_by_term_returns else "returns"
-        val_buffer_key = "value_terms_preds" if term_by_term_returns else "value_preds"
+    def compute_returns(self, next_value, term_by_term=False):
+        reward_buffer_key = "reward_terms" if term_by_term else "rewards"
+        return_buffer_key = "return_terms" if term_by_term else "returns"
+        val_buffer_key = "value_terms_preds" if term_by_term else "value_preds"
         assert next_value.shape[1] == self.buffers[reward_buffer_key].shape[2], (
             f"{reward_buffer_key} "
             f"{next_value.shape[1]} != {self.buffers[reward_buffer_key].shape[2]}"
@@ -210,12 +213,36 @@ class RolloutStorage:
 
             yield batch.map(lambda v: v.flatten(0, 1))
 
-    def normalize_values(self, value_normalizer):
-        for k in ["value_preds", "returns"]:
-            num_terms = self.buffers[k].shape[-1]
-            self.buffers[k] = value_normalizer(
-                self.buffers[k].reshape(-1, num_terms)
-            ).reshape(self.num_steps + 1, self._num_envs, -1)
+    def normalize_values(self, actor_critic):
+        """If the actor_critic has learned normalizers, then we use them to update
+        the value estimates, returns, and their respective terms, if those terms exist.
+        We prioritize using critics vs heads."""
+        if not self.init_normalizers:
+            self.initialize_normalizers(actor_critic)
+        norm_keys = [
+            (self.value_normalizer, ["value_preds", "returns"]),
+            (self.value_terms_normalizer, ["value_terms_preds", "return_terms"]),
+        ]
+        for norm, keys in norm_keys:
+            if norm is not None:
+                for key in keys:
+                    num_terms = self.buffers[key].shape[-1]
+                    self.buffers[key] = norm(
+                        self.buffers[key].reshape(-1, num_terms)
+                    ).reshape(self.num_steps + 1, self._num_envs, -1)
+
+    def initialize_normalizers(self, actor_critic):
+        """Search for normalizers in the critic first, then the head."""
+        self.init_normalizers = True
+        for critic in [actor_critic.critic, actor_critic.head]:
+            # Skip if the critic or its normalizer don't exist
+            if None in [critic, getattr(critic, "normalizer", None)]:
+                continue
+            target = critic.target_key
+            if target == "returns" and self.value_normalizer is None:
+                self.value_normalizer = critic.normalizer
+            elif target == "return_terms" and self.value_terms_normalizer is None:
+                self.value_terms_normalizer = critic.normalizer
 
 
 @torch.jit.script

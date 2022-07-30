@@ -1,5 +1,6 @@
 from typing import Optional
 
+import torch
 from torch import nn as nn
 
 from drl.nets.basic import NNBase
@@ -53,25 +54,57 @@ class ActorCritic(nn.Module):
         return value, actions, action_log_probs, other
 
     def evaluate_actions(self, observations, action):
-        value, dist, _ = self._process_observations(observations, unnorm_value=False)
+        value, dist, _ = self._process_observations(
+            observations, unnorm_value=False, sum_terms=False
+        )
         action_log_probs = dist.log_probs(action)
         return value, action_log_probs, dist
 
-    def get_value(self, observations, features=None, unnorm_value=True):
+    def get_value(
+        self,
+        observations,
+        features: Optional[torch.Tensor] = None,
+        unnorm_value: bool = True,
+        all_values: bool = False,
+        sum_terms: bool = True,
+    ):
         if self.obs_normalizer is not None:
             observations = self.obs_normalizer(observations)
         if self.critic_is_head and features is None:
             features = self.net(observations)
         value = self.critic.get_value(
-            features if self.critic_is_head else observations, unnorm=unnorm_value
+            features if self.critic_is_head else observations,
+            unnorm=unnorm_value,
+            sum_terms=not all_values and sum_terms,
         )
+        if all_values:
+            return self.get_value_dict(value, features)
         return value
 
-    def _process_observations(self, observations, unnorm_value=True):
+    def get_value_dict(self, value, features):
+        values_dict = {}
+        if value.shape[1] > 1:
+            values_dict["value_terms_preds"] = value
+        else:
+            values_dict["value_preds"] = value
+        if self.head is not None:
+            other = self.head.get_other(features)
+            values_dict.update({k: v for k, v in other.items() if k not in values_dict})
+        if "value_preds" not in values_dict:
+            values_dict["value_preds"] = values_dict["value_terms_preds"].sum(
+                1, keepdims=True
+            )
+        return values_dict
+
+    def _process_observations(
+        self, observations, unnorm_value: bool = True, sum_terms: bool = True
+    ):
         if self.obs_normalizer is not None:
             observations = self.obs_normalizer(observations)
         self.features = features = self.net(observations)
-        value = self.get_value(observations, features, unnorm_value)
+        value = self.get_value(
+            observations, features, unnorm_value, sum_terms=sum_terms
+        )
         dist = self.action_distribution(features)
         other = self.get_other()
 

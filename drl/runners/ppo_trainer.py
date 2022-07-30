@@ -48,5 +48,9 @@ class PPOTrainer(BaseTrainer):
 
     def prepare_rollouts(self, observations):
         with torch.no_grad():
-            next_value = self.actor_critic.get_value(observations)
-        self.rollouts.compute_returns(next_value)
+            values_dict = self.actor_critic.get_value(observations, all_values=True)
+        self.rollouts.compute_returns(values_dict["value_preds"])
+        if "value_terms_preds" in values_dict:
+            self.rollouts.compute_returns(
+                values_dict["value_terms_preds"], term_by_term=True
+            )

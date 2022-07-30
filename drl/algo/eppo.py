@@ -9,29 +9,19 @@ import torch
 from drl.algo.ppo import PPO
 from drl.utils.common import mse_loss
 
-# import torch.nn as nn
-# from torch.optim import Adam
-from drl.utils.rollout_storage import RolloutStorage
-
 
 class EPPO(PPO):
     def __init__(self, aux_coeff, *args, **kwargs):
         self.aux_coeff = aux_coeff
         super().__init__(*args, **kwargs)
 
-    def update(self, rollouts: RolloutStorage):
-        if self.actor_critic.head.normalizer is not None:
-            num_terms = rollouts.buffers["return_terms"].shape[-1]
-            rollouts.buffers["return_terms"] = self.actor_critic.head.normalizer(
-                rollouts.buffers["return_terms"].reshape(-1, num_terms)
-            ).reshape(rollouts.num_steps + 1, rollouts._num_envs, -1)
-        return super().update(rollouts)
-
     def aux_loss(self, batch, values, action_log_probs, dist):
-        value_terms_pred = self.actor_critic.head(
+        if self.actor_critic.head is None:
+            return 0
+        head_pred = self.actor_critic.head(
             self.actor_critic.features, unnorm=False
         )
-        aux_loss = mse_loss(value_terms_pred, batch["return_terms"])
+        aux_loss = mse_loss(head_pred, batch[self.actor_critic.head.target_key])
         self.losses_data["losses/aux_loss"] += aux_loss.item()
         return aux_loss * self.aux_coeff
 
