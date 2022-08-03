@@ -74,16 +74,18 @@ class ActorCritic(nn.Module):
             unnorm=unnorm_value,
         )
         if all_values:
-            return self.get_value_dict(value, features)
+            return self.get_value_dict(value, observations, features)
         return value
 
-    def get_value_dict(self, value, features):
+    def get_value_dict(self, value, observations, features):
         values_dict = {}
         if value.shape[1] > 1:
             values_dict["value_terms_preds"] = value
         else:
             values_dict["value_preds"] = value
         if self.head is not None:
+            if features is None:
+                features = self.net(observations)
             other = self.head.get_other(features)
             values_dict.update({k: v for k, v in other.items() if k not in values_dict})
         if "value_preds" not in values_dict:
