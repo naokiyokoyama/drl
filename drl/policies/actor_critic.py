@@ -29,11 +29,11 @@ class ActorCritic(nn.Module):
     ):
         """
         :param net: "Encoder" net that passes features into all heads
-        :param action_distribution: Net that outputs action distribution
-        :param critic: Net that estimates value of the state
-        :param head: Net that does some auxiliary task
-        :param normalize_obs: Whether the observations will be normalized
-        :param normalize_value: Whether the values will be normalized
+        :param action_distribution: Net that outputs/parameterizes action distribution
+        :param critic: Net estimating value of the state
+        :param head: Net for some auxiliary task
+        :param normalize_obs: Whether observations will be normalized
+        :param normalize_value: Whether values will be normalized
         """
         super().__init__()
         self.net = net
