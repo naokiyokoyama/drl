@@ -64,9 +64,10 @@ class ActorCritic(nn.Module):
         features: Optional[torch.Tensor] = None,
         unnorm_value: bool = True,
         all_values: bool = False,
+        norm_obs: bool = True,
     ):
-        if self.obs_normalizer is not None:
-            observations = self.obs_normalizer(observations)
+        if norm_obs:
+            observations = self._norm_obs(observations)
         if self.critic_is_head and features is None:
             features = self.net(observations)
         value = self.critic(
@@ -74,49 +75,8 @@ class ActorCritic(nn.Module):
             unnorm=unnorm_value,
         )
         if all_values:
-            return self.get_value_dict(value, observations, features)
+            return self._get_value_dict(value, observations, features)
         return value
-
-    def get_value_dict(self, value, observations, features):
-        values_dict = {}
-        if value.shape[1] > 1:
-            values_dict["value_terms_preds"] = value
-        else:
-            values_dict["value_preds"] = value
-        if self.head is not None:
-            if features is None:
-                features = self.net(observations)
-            other = self.head.get_other(features)
-            values_dict.update({k: v for k, v in other.items() if k not in values_dict})
-        if "value_preds" not in values_dict:
-            values_dict["value_preds"] = values_dict["value_terms_preds"].sum(
-                1, keepdims=True
-            )
-        return values_dict
-
-    def _process_observations(self, observations, unnorm_value: bool = True):
-        if self.obs_normalizer is not None:
-            observations = self.obs_normalizer(observations)
-        self.features = features = self.net(observations)
-        value = self.get_value(observations, features, unnorm_value)
-        dist = self.action_distribution(features)
-        other = self.get_other()
-
-        return value, dist, other
-
-    def get_other(self):
-        """Primarily for returning rnn_hx, but could be used for auxiliary
-        tasks/losses/schedulers/etc."""
-        other = {}
-        if self.net.is_recurrent:
-            other["net_rnn_hx"] = self.net.rnn_hx
-        if getattr(self.critic, "is_recurrent", False):
-            other["critic_rnn_hx"] = self.critic.rnn_hx
-        if self.action_distribution.name == "GaussianActDist":
-            other["mu_sigma"] = self.action_distribution.output_mu_sigma
-        if self.head is not None:
-            other.update(self.head.get_other(self.features))
-        return other
 
     @property
     def is_recurrent(self):
@@ -159,5 +119,49 @@ class ActorCritic(nn.Module):
             **kwargs,
         )
 
-    def forward(self, x):
-        return self.act(x)
+    """ All methods below this line are private. """
+
+    def _norm_obs(self, observations):
+        if self.obs_normalizer is not None:
+            return self.obs_normalizer(observations)
+        return observations
+
+    def _process_observations(self, observations, unnorm_value: bool = True):
+        observations = self._norm_obs(observations)
+        self.features = features = self.net(observations)
+        value = self.get_value(observations, features, unnorm_value, norm_obs=False)
+        dist = self.action_distribution(features)
+        other = self._get_other()
+
+        return value, dist, other
+
+    def _get_other(self):
+        """Primarily for returning rnn_hx, but could be used for auxiliary
+        tasks/losses/schedulers/etc."""
+        other = {}
+        if self.net.is_recurrent:
+            other["net_rnn_hx"] = self.net.rnn_hx
+        if getattr(self.critic, "is_recurrent", False):
+            other["critic_rnn_hx"] = self.critic.rnn_hx
+        if self.action_distribution.name == "GaussianActDist":
+            other["mu_sigma"] = self.action_distribution.output_mu_sigma
+        if self.head is not None:
+            other.update(self.head.get_other(self.features))
+        return other
+
+    def _get_value_dict(self, value, observations, features):
+        values_dict = {}
+        if value.shape[1] > 1:
+            values_dict["value_terms_preds"] = value
+        else:
+            values_dict["value_preds"] = value
+        if self.head is not None:
+            if features is None:
+                features = self.net(observations)
+            other = self.head.get_other(features)
+            values_dict.update({k: v for k, v in other.items() if k not in values_dict})
+        if "value_preds" not in values_dict:
+            values_dict["value_preds"] = values_dict["value_terms_preds"].sum(
+                1, keepdims=True
+            )
+        return values_dict
