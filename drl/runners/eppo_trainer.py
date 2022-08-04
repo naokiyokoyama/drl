@@ -1,5 +1,3 @@
-import torch
-
 from drl.algo.eppo import EPPO
 from drl.runners.ppo_trainer import PPOTrainer
 from drl.utils.registry import drl_registry
