@@ -142,14 +142,18 @@ class PPO(nn.Module):
 
     def value_loss(self, batch, values):
         key = self.actor_critic.critic.target_key
-        v_key = "value_preds" if key == "returns" else "value_terms_preds"
         if self.use_clipped_value_loss:
-            value_pred_clipped = batch[v_key] + (
-                values - batch[v_key]
-            ).clamp(-self.clip_param, self.clip_param)
-            value_losses = (values - batch[key]).pow(2)
-            value_losses_clipped = (value_pred_clipped - batch[key]).pow(2)
-            value_loss = torch.max(value_losses, value_losses_clipped).mean()
+            with torch.no_grad():
+                value_losses = (values - batch["returns"]).pow(2)
+                value_pred_clipped = batch["value_preds"] + (
+                        values - batch["value_preds"]
+                ).clamp(-self.clip_param, self.clip_param)
+                value_losses_clipped = (value_pred_clipped - batch["returns"]).pow(2)
+                max_loss = torch.max(value_losses, value_losses_clipped).mean()
+                value_mask = torch.eq(max_loss, value_losses)
+                value_mask = value_mask.repeat(1, batch[key].shape[1])
+            value_loss = mse_loss(values, batch[key])
+            value_loss = torch.where(value_mask, value_loss, value_loss.detach())
         else:
             value_loss = mse_loss(values, batch[key])
         value_loss = value_loss * self.value_loss_coef
