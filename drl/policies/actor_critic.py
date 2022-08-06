@@ -154,9 +154,9 @@ class ActorCritic(nn.Module):
         val_key = "value_terms_preds" if value.shape[1] > 1 else "value_preds"
         values_dict[val_key] = value
         if self.head is not None:
-            if features is None:
-                features = self.net(observations)
-            other = self.head.get_other(features)
+            other = self.head.get_other(
+                self.net(observations) if features is None else features
+            )
             values_dict.update({k: v for k, v in other.items() if k not in values_dict})
         if "value_preds" not in values_dict:
             values_dict["value_preds"] = values_dict["value_terms_preds"].sum(
