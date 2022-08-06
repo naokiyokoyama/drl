@@ -144,9 +144,9 @@ class PPO(nn.Module):
         key = self.actor_critic.critic.target_key
         v_key = "value_preds" if key == "returns" else "value_terms_preds"
         if self.use_clipped_value_loss:
-            value_pred_clipped = batch[v_key] + (
-                values - batch[v_key]
-            ).clamp(-self.clip_param, self.clip_param)
+            value_pred_clipped = batch[v_key] + (values - batch[v_key]).clamp(
+                -self.clip_param, self.clip_param
+            )
             value_losses = (values - batch[key]).pow(2)
             value_losses_clipped = (value_pred_clipped - batch[key]).pow(2)
             value_loss = torch.max(value_losses, value_losses_clipped).mean()
