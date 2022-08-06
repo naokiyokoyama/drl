@@ -40,6 +40,7 @@ class RolloutStorage:
         self.value_normalizer = None
         self.value_terms_normalizer = None
         self.init_normalizers = False
+        self.single_term_critic = None  # will be a bool
 
         # We can definitively define the shapes of these sub-buffers without a sample
         self.buffers["rewards"] = torch.zeros(num_steps + 1, num_envs, 1, device=device)
@@ -120,18 +121,19 @@ class RolloutStorage:
         other,
         advance=True,
     ):
-        if value_preds.shape[1] > 1:
-            other["value_terms_preds"] = value_preds.clone()
-            value_preds = value_preds.sum(1, keepdims=True)
-
         # Automatically try to reshape rewards if they seem squeezed
         current_step = dict(
             actions=actions,
             action_log_probs=action_log_probs,
-            value_preds=value_preds,
             rewards=rewards.unsqueeze(-1) if rewards.ndim == 1 else rewards,
             **other,
         )
+        val_key = "value_terms_preds" if value_preds.shape[1] > 1 else "value_preds"
+        if self.single_term_critic is None:
+            self.single_term_critic = val_key == "value_preds"
+        else:
+            assert self.single_term_critic == (val_key == "value_preds")
+        current_step[val_key] = value_preds
         next_not_dones = torch.logical_not(next_dones.bool())
         next_step = dict(observations=next_observations, not_dones=next_not_dones)
 
@@ -159,29 +161,46 @@ class RolloutStorage:
         self.buffers[0] = self.buffers[self.current_rollout_step_idx]
         self.current_rollout_step_idx = 0
 
-    def compute_returns(self, next_value, term_by_term=False):
-        reward_buffer_key = "reward_terms" if term_by_term else "rewards"
-        return_buffer_key = "return_terms" if term_by_term else "returns"
-        val_buffer_key = "value_terms_preds" if term_by_term else "value_preds"
-        assert next_value.shape[1] == self.buffers[reward_buffer_key].shape[2], (
-            f"{reward_buffer_key} "
-            f"{next_value.shape[1]} != {self.buffers[reward_buffer_key].shape[2]}"
-        )
+    def compute_returns(self, value_dict):
+        """Always do term-by-term return computation if value terms (value_terms_preds)
+        are in the value dict. Only do normal (value_preds) return computation if the
+        main critic is a single-term one. Otherwise, just sum the term-by-term
+        returns to get the normal single-term returns."""
+        assert "value_preds" in value_dict or "value_terms_preds" in value_dict
+        jobs = []
+        if "value_terms_preds" in value_dict:
+            jobs.append(("return_terms", "value_terms_preds", "reward_terms"))
+        if self.single_term_critic:
+            # To have come here, main critic must be a single-term one
+            jobs.append(("returns", "value_preds", "rewards"))
+        assert len(jobs) > 0
 
-        if self.use_gae:
-            self.buffers[val_buffer_key][self.current_rollout_step_idx] = next_value
-        self.buffers[return_buffer_key] = compute_returns(
-            self.current_rollout_step_idx,
-            next_value,
-            self.buffers[reward_buffer_key],
-            self.buffers[val_buffer_key],
-            self.buffers["not_dones"],
-            self.use_gae,
-            self.gamma,
-            self.tau,
-            self.value_bootstrap,
-            self.buffers.get("time_outs", None),
-        )
+        for return_buffer_key, val_buffer_key, reward_buffer_key in jobs:
+            next_value = value_dict[val_buffer_key]
+            assert next_value.shape[1] == self.buffers[reward_buffer_key].shape[2], (
+                f"{reward_buffer_key} "
+                f"{next_value.shape[1]} != {self.buffers[reward_buffer_key].shape[2]}"
+            )
+
+            if self.use_gae:
+                self.buffers[val_buffer_key][self.current_rollout_step_idx] = next_value
+            self.buffers[return_buffer_key] = compute_returns(
+                self.current_rollout_step_idx,
+                next_value,
+                self.buffers[reward_buffer_key],
+                self.buffers[val_buffer_key],
+                self.buffers["not_dones"],
+                self.use_gae,
+                self.gamma,
+                self.tau,
+                self.value_bootstrap,
+                self.buffers.get("time_outs", None),
+            )
+        if not self.single_term_critic:
+            self.buffers["returns"] = self.buffers["return_terms"].sum(2, keepdims=True)
+            self.buffers["value_preds"] = self.buffers["value_terms_preds"].sum(
+                2, keepdims=True
+            )
 
     def recurrent_generator(self, advantages, num_mini_batch) -> TensorDict:
         num_environments = advantages.size(1)
