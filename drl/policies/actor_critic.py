@@ -151,10 +151,8 @@ class ActorCritic(nn.Module):
 
     def _get_value_dict(self, value, observations, features):
         values_dict = {}
-        if value.shape[1] > 1:
-            values_dict["value_terms_preds"] = value
-        else:
-            values_dict["value_preds"] = value
+        val_key = "value_terms_preds" if value.shape[1] > 1 else "value_preds"
+        values_dict[val_key] = value
         if self.head is not None:
             if features is None:
                 features = self.net(observations)
