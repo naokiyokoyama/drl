@@ -66,8 +66,9 @@ class ActorCritic(nn.Module):
         all_values: bool = False,
         norm_obs: bool = True,
     ):
+        norm_observations = self._norm_obs(observations)
         if norm_obs:
-            observations = self._norm_obs(observations)
+            observations = norm_observations
         if self.critic_is_head and features is None:
             features = self.net(observations)
         value = self.critic(
