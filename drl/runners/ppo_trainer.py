@@ -17,17 +17,28 @@ class PPOTrainer(BaseTrainer):
             self.config, self.num_envs, self.device, self.initial_observations
         )
         self.curr_step = 0
+        pretrained_state = torch.load("test_weights.pth", map_location="cpu")
+        orig = self.actor_critic.state_dict()
+        orig.update({k: v for k, v in pretrained_state.items() if k in orig})
+        self.actor_critic.load_state_dict(orig)
 
     def step(self, observations):
+        self.set_seed(self.curr_step)
+        observations = torch.rand_like(observations)
         with torch.no_grad():
             (
                 value,
                 actions,
                 action_log_probs,
                 other,
-            ) = self.actor_critic.act(observations)
+            ) = self.actor_critic.act(observations, deterministic=True)
+        print("action:", actions)
 
         observations, rewards, dones, infos = self.step_envs(actions)
+        self.set_seed(self.curr_step)
+        rewards = torch.rand_like(rewards)
+        dones = torch.zeros_like(dones)
+        infos["reward_terms"] = torch.rand_like(infos["reward_terms"])
         self.curr_step += 1
         other.update(infos)
 
