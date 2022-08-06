@@ -47,8 +47,15 @@ class ActorCritic(nn.Module):
         action_log_probs = dist.log_probs(action)
         return value, action_log_probs, dist
 
-    def get_value(self, observations, features=None, get_terms=False, unnorm_value=True):
-        if self.obs_normalizer is not None:
+    def get_value(
+        self,
+        observations,
+        features=None,
+        get_terms=False,
+        unnorm_value=True,
+        norm_obs=True,
+    ):
+        if norm_obs and self.obs_normalizer is not None:
             observations = self.obs_normalizer(observations)
         if self.critic_is_head and features is None:
             features = self.net(observations)
@@ -63,7 +70,9 @@ class ActorCritic(nn.Module):
         if self.obs_normalizer is not None:
             observations = self.obs_normalizer(observations)
         self.features = features = self.net(observations)
-        value = self.get_value(observations, features, get_terms, unnorm_value)
+        value = self.get_value(
+            observations, features, get_terms, unnorm_value, norm_obs=False
+        )
         dist = self.action_distribution(features)
         other = self._get_other()
 
