@@ -35,7 +35,7 @@ class EPPO(PPO):
         return optimizers
 
     def aux_loss(self, batch, values, action_log_probs, dist):
-        if "q_critic" not in self.optimizers:
+        if "q_critic" in self.optimizers:
             action = self.actor_critic.reparameterize_action(
                 batch["observations"], batch["actions"]
             )
@@ -43,13 +43,12 @@ class EPPO(PPO):
             adv_pred = self.actor_critic.q_critic(state_action)
             if adv_pred.shape[1] > 1:
                 adv_pred = adv_pred.sum(1, keepdims=True)
-            obj = -(
-                batch["returns"] - batch["value_preds"] + adv_pred - adv_pred.detach()
-            )
+            obj = -adv_pred
             mask = self.cherry_pick(action_log_probs, batch)
-            action_loss = (mask * obj).mean()
-            self.losses_data["losses/aux_loss"] += action_loss.item()
-            return action_loss
+            # aux_loss = (mask * obj).mean()
+            aux_loss = obj.mean()
+            self.losses_data["losses/aux_loss"] += aux_loss.item()
+            return aux_loss
 
         if self.actor_critic.head is not None:
             head_pred = self.actor_critic.head(self.actor_critic.features, unnorm=False)
