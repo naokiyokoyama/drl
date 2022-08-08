@@ -75,11 +75,6 @@ class CustomGaussian:
             return log_probs.sum(1, keepdim=True)
         return log_probs
 
-    def reparameterize_action(self, actions: Tensor):
-        eps = (actions - self.mu) / self.sigma
-        reparam_action = self.mu + self.sigma * eps.detach()
-        return reparam_action
-
     def log_probs_to_reparam_action(self, actions: Tensor, log_probs: Tensor):
         detached_sigma = self.sigma.detach()
         detached_mu = self.mu.detach()

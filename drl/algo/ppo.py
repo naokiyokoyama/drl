@@ -91,6 +91,7 @@ class PPO(nn.Module):
                     self.update_policy(batch, values, action_log_probs, dist)
                 if epoch < self.critic_epoch and not self.actor_critic.critic_is_head:
                     self.update_critic(values, batch)
+                self.update_other(batch)
         rollouts.after_update()
         return self.get_losses_data()
 
@@ -120,6 +121,9 @@ class PPO(nn.Module):
         self.update_weights(
             0.5 * self.value_loss(values, batch) * self.value_loss_coef, ["critic"]
         )
+
+    def update_other(self, batch):
+        pass
 
     def update_weights(self, loss, opt_keys):
         for name, opt in self.optimizers.items():

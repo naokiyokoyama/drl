@@ -36,9 +36,11 @@ ACTOR_CRITIC:
     activation: "elu"
     normalize_value: True
   q_critic:
-    name: "MLPCritic"
+    name: "MLPCriticAdvTerms"
     hidden_sizes: [128, 64]
+    is_head: False
     activation: "elu"
+    normalize_value: False
   normalize_obs: True
 RL:
   scheduler:
@@ -49,7 +51,7 @@ RL:
   PPO:
     clip_param: 0.2
     policy_epoch: 4
-    critic_epoch: 4
+    critic_epoch: 12
     num_mini_batch: 2
     value_loss_coef: 2.0
     entropy_coef: 0.000
