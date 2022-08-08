@@ -46,7 +46,7 @@ class EPPO(PPO):
             obj = -adv_pred
             mask = self.cherry_pick(action_log_probs, batch)
             # aux_loss = (mask * obj).mean()
-            aux_loss = obj.mean()
+            aux_loss = obj.mean() * self.aux_coeff
             self.losses_data["losses/aux_loss"] += aux_loss.item()
             return aux_loss
 
