@@ -1,6 +1,7 @@
 from functools import partial
-from typing import Tuple
+from typing import Tuple, Union
 
+import gym
 import torch
 import torch.nn as nn
 
@@ -66,9 +67,15 @@ class MLPBase(NNBase):  # noqa
         return {}
 
     @classmethod
-    def from_config(cls, nn_config, obs_space=None, input_shape=None, *args, **kwargs):
+    def from_config(
+        cls, config, nn_config, input_space: Union[Tuple, gym.Space], *args, **kwargs
+    ):
+        if not isinstance(input_space, tuple):
+            input_shape = input_space.shape
+        else:
+            input_shape = input_space
         return cls(
-            input_shape=input_shape if input_shape is not None else obs_space.shape,
+            input_shape=input_shape,
             hidden_sizes=nn_config.hidden_sizes,
             activation=nn_config.activation,
             **kwargs,
@@ -101,12 +108,15 @@ class MLPCritic(MLPBase):  # noqa
         return x
 
     @classmethod
-    def from_config(cls, nn_config, obs_space, net, *args, **kwargs):  # noqa
-        input_shape = net.output_shape if nn_config.is_head else None
+    def from_config(
+        cls, config, nn_config, input_space: Union[Tuple, gym.Space], *args, **kwargs
+    ):  # noqa
+        if nn_config.is_head:
+            input_space = (config.ACTOR_CRITIC.net.hidden_sizes[-1],)
         return super().from_config(
-            nn_config,
-            obs_space,
-            input_shape,
+            config=config,
+            nn_config=nn_config,
+            input_space=input_space,
             normalize_value=nn_config.normalize_value,
             **kwargs,
         )
@@ -117,13 +127,16 @@ class MLPCriticTermsHead(MLPCritic):  # noqa
     target_key = "return_terms"
 
     @classmethod
-    def from_config(cls, nn_config, obs_space, net, *args, **kwargs):
-        assert "num_reward_terms" in nn_config
+    def from_config(
+        cls, config, nn_config, input_space: Union[Tuple, gym.Space], *args, **kwargs
+    ):
+        assert "num_reward_terms" in config
         return super().from_config(
-            nn_config,
-            obs_space,
-            net,
-            num_outputs=nn_config.num_reward_terms,
+            config=config,
+            nn_config=nn_config,
+            input_space=input_space,
+            num_outputs=config.num_reward_terms,
+            **kwargs,
         )
 
     def get_other(self, features):

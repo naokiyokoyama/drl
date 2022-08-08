@@ -15,7 +15,7 @@ class ActorCritic(nn.Module):
     At minimum, this class represents a policy and a critic. The critic can be a head
     that shares parameters with the policy, or it can be a separate network. Optionally,
     a head that does NOT act as a critic can be added to the policy. In such case, the
-    critic must be its own network.
+    actual critic must be a separate network.
     """
 
     def __init__(
@@ -99,13 +99,14 @@ class ActorCritic(nn.Module):
         critic_cls = drl_registry.get_nn_base(ac_cfg.critic.name)
         head_cls = drl_registry.get_nn_base(ac_cfg.head.name)
 
-        net = net_cls.from_config(ac_cfg.net, obs_space)
-        critic_obs_space = obs_space if critic_obs_space is None else critic_obs_space
-        critic = critic_cls.from_config(ac_cfg.critic, critic_obs_space, net)
+        net = net_cls.from_config(config, ac_cfg.net, obs_space)
+        if critic_obs_space is None:
+            critic_obs_space = obs_space
+        critic = critic_cls.from_config(config, ac_cfg.critic, critic_obs_space)
         if head_cls is None:
             head = None
         else:
-            head = head_cls.from_config(ac_cfg.head, critic_obs_space, net)
+            head = head_cls.from_config(config, ac_cfg.head, critic_obs_space)
 
         return cls(
             net=net,

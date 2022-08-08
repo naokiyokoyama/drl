@@ -15,8 +15,7 @@ class EPPOTrainer(PPOTrainer):
     def instantiate_actor_critic(self, actor_critic_cls):
         # Count the amount of reward terms by doing a dummy step
         num_reward_terms = get_num_reward_terms(self.envs, self.num_envs)
-        self.config.ACTOR_CRITIC.critic["num_reward_terms"] = num_reward_terms
-        self.config.ACTOR_CRITIC.head["num_reward_terms"] = num_reward_terms
+        self.config["num_reward_terms"] = num_reward_terms
 
         # Reset envs and update obs because dummy step was taken
         self.initial_observations = self.preprocess_observations(self.envs.reset())
