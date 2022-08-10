@@ -144,6 +144,14 @@ class MLPCriticTermsHead(MLPCritic):
 
 
 @drl_registry.register_nn_base
+class MLPRewardTermsHead(MLPCriticTermsHead):
+    target_key = "reward_terms"
+
+    def get_other(self, features):
+        return {}
+
+
+@drl_registry.register_nn_base
 class MLPCriticAdvTerms(MLPCritic):
     target_key = "advantages"
 
