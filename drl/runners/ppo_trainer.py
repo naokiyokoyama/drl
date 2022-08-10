@@ -30,6 +30,8 @@ class PPOTrainer(BaseTrainer):
         observations, rewards, dones, infos = self.step_envs(actions)
         self.curr_step += 1
         other.update(infos)
+        if "episode" in other:
+            other.pop("episode")
 
         self.rollouts.insert(
             next_observations=observations,
