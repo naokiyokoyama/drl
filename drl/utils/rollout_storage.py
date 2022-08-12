@@ -200,6 +200,7 @@ class RolloutStorage:
             f"of PPO mini batches ({num_mini_batch})."
         )
 
+        torch.manual_seed(1)
         for inds in torch.randperm(self.current_rollout_step_idx).chunk(num_mini_batch):
             batch = self.buffers[inds]
             batch["advantages"] = advantages[inds]
