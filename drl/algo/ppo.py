@@ -40,7 +40,7 @@ class PPO(nn.Module):
         self.clip_param = clip_param
         self.policy_epoch = policy_epoch
         self.critic_epoch = 0 if self.actor_critic.critic_is_head else critic_epoch
-        self.ppo_epoch = max(policy_epoch, critic_epoch)
+        self.ppo_epoch = max(policy_epoch, self.critic_epoch)
         self.num_mini_batch = num_mini_batch
 
         self.value_loss_coef = value_loss_coef
