@@ -82,35 +82,59 @@ class MLPBase(NNBase):  # noqa
         )
 
 
+PRED2LABEL = {
+    "value_preds": "returns",
+    "value_terms_preds": "return_terms",
+    "rewards_preds": "rewards",
+    "reward_terms_preds": "reward_terms",
+    "adv_preds": "advantages",
+    "adv_terms_preds": "advantage_terms",
+}
+
+
 @drl_registry.register_nn_base
 class MLPCritic(MLPBase):
-    target_key = "returns"
+    pred2label = {"value_preds": "returns"}
+    pred_key = "value_preds"
 
     def __init__(
         self,
         input_shape,
         hidden_sizes,
-        num_outputs=1,
+        output_types=("value_preds",),
+        num_reward_terms=None,
         activation="elu",
         normalize_value=False,
     ):
-        all_sizes = [*hidden_sizes, num_outputs]
+        self.output_types = output_types
+        self.num_reward_terms = num_reward_terms
+        self.section_sizes = []  # gets assigned by _calc_num_outputs()
+        all_sizes = [*hidden_sizes, self._calc_num_outputs()]
         super().__init__(input_shape, all_sizes, activation)
+
         # Remove the final activation layer
         layers = list(self.mlp.children())
         self.mlp = nn.Sequential(*layers[:-1]) if len(layers) > 2 else layers[0]
-        self.normalizer = RunningMeanStd(self.output_shape) if normalize_value else None
+
+        self.value_normalizer = None
+        self.value_terms_normalizer = None
+        self._setup_normalizers(normalize_value)
 
     def forward(self, x, unnorm: bool = True):
         x = super().forward(x)
-        if self.normalizer is not None and unnorm:
-            return self.normalizer(x, unnorm=True)
-        return x
+        x = torch.split(x, self.section_sizes, dim=1)
+        out = {}
+        for key, value in zip(self.output_types, x):
+            if key in self.normalizer_map and unnorm:
+                out[key] = self.normalizer_map[key](value, unnorm=True)
+            else:
+                out[key] = value
+        return out
 
     @classmethod
     def from_config(
         cls, config, nn_config, input_space: Union[Tuple, gym.Space], *args, **kwargs
-    ):  # noqa
+    ):
         if nn_config.is_head:
             input_space = (config.ACTOR_CRITIC.net.hidden_sizes[-1],)
         return super().from_config(
@@ -118,81 +142,36 @@ class MLPCritic(MLPBase):
             nn_config=nn_config,
             input_space=input_space,
             normalize_value=nn_config.normalize_value,
+            output_types=nn_config.output_types,
+            num_reward_terms=config.get("num_reward_terms", None),
             **kwargs,
         )
 
+    def _calc_num_outputs(self):
+        """We assume any output type with the word "terms" in it needs as many terms
+        as there are reward terms. Otherwise, we assume it only has one term."""
+        num_outputs = 0
+        self.section_sizes = []
+        for out_type in self.output_types:
+            if "terms" in out_type:
+                assert self.num_reward_terms is not None
+                section_size = self.num_reward_terms
+            else:
+                section_size = 1
+            num_outputs += section_size
+            self.section_sizes.append(section_size)
 
-@drl_registry.register_nn_base
-class MLPCriticTermsHead(MLPCritic):
-    target_key = "return_terms"
+        return num_outputs
 
-    @classmethod
-    def from_config(
-        cls, config, nn_config, input_space: Union[Tuple, gym.Space], *args, **kwargs
-    ):
-        assert "num_reward_terms" in config
-        return super().from_config(
-            config=config,
-            nn_config=nn_config,
-            input_space=input_space,
-            num_outputs=config.num_reward_terms,
-            **kwargs,
-        )
+    def _setup_normalizers(self, normalize_value):
+        self.normalizer_map = {}
+        if not normalize_value:
+            return
 
-    def get_other(self, features):
-        return {"value_terms_preds": self.forward(features)}
-
-
-@drl_registry.register_nn_base
-class MLPRewardTermsHead(MLPCriticTermsHead):
-    target_key = "reward_terms"
-
-    def get_other(self, features):
-        return {}
-
-
-@drl_registry.register_nn_base
-class MLPCriticAdvTerms(MLPCritic):
-    target_key = "advantages"
-
-    @classmethod
-    def from_config(  # noqa
-        cls,
-        config,
-        nn_config,
-        input_space: Union[Tuple, gym.Space],
-        action_space: gym.Space,
-        *args,
-        **kwargs
-    ):
-        assert "num_reward_terms" in config
-        assert not isinstance(input_space, tuple)
-        return super().from_config(
-            config=config,
-            nn_config=nn_config,
-            input_space=(input_space.shape[0] + action_space.shape[0],),
-            num_outputs=config.num_reward_terms,
-            **kwargs,
-        )
-
-@drl_registry.register_nn_base
-class MLPCriticAdv(MLPCritic):
-    @classmethod
-    def from_config(  # noqa
-        cls,
-        config,
-        nn_config,
-        input_space: Union[Tuple, gym.Space],
-        action_space: gym.Space,
-        *args,
-        **kwargs
-    ):
-        assert "num_reward_terms" in config
-        assert not isinstance(input_space, tuple)
-        return super().from_config(
-            config=config,
-            nn_config=nn_config,
-            input_space=(input_space.shape[0] + action_space.shape[0],),
-            num_outputs=1,
-            **kwargs,
-        )
+        for out_type, section_size in zip(self.output_types, self.section_sizes):
+            if out_type == "value_preds":
+                self.value_normalizer = RunningMeanStd((section_size,))
+                self.normalizer_map[out_type] = self.value_normalizer
+            elif out_type == "value_terms_preds":
+                self.value_terms_normalizer = RunningMeanStd((section_size,))
+                self.normalizer_map[out_type] = self.value_terms_normalizer

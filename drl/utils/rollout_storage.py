@@ -254,18 +254,19 @@ class RolloutStorage:
                         self.buffers[key].reshape(-1, num_terms)
                     ).reshape(self.num_steps + 1, self._num_envs, -1)
 
-    def initialize_normalizers(self, actor_critic):
+    def initialize_normalizers(self, actor_critic):  # TODO
         """Search for normalizers in the critic first, then the head."""
         self.init_normalizers = True
         for critic in [actor_critic.critic, actor_critic.head]:
-            # Skip if the critic or its normalizer don't exist
-            if None in [critic, getattr(critic, "normalizer", None)]:
+            # Skip if the critic doesn't even exist (the head)
+            if critic is None:
                 continue
-            target = critic.target_key
-            if target == "returns" and self.value_normalizer is None:
-                self.value_normalizer = critic.normalizer
-            elif target == "return_terms" and self.value_terms_normalizer is None:
-                self.value_terms_normalizer = critic.normalizer
+            if self.value_normalizer is None:
+                self.value_normalizer = critic.normalizer_map.get("value_preds", None)
+            if self.value_terms_normalizer is None:
+                self.value_terms_normalizer = critic.normalizer_map.get(
+                    "value_terms_preds", None
+                )
 
 
 @torch.jit.script

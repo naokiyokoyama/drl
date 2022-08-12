@@ -84,13 +84,13 @@ class PPO(nn.Module):
         self.losses_data = defaultdict(float)  # clear the loss data
         for epoch in range(self.ppo_epoch):
             for batch in generator(advantages, self.num_mini_batch):
-                values, action_log_probs, dist = self.actor_critic.evaluate_actions(
+                value_dict, action_log_probs, dist = self.actor_critic.evaluate_actions(
                     batch["observations"], batch["actions"]
                 )
                 if epoch < self.policy_epoch:
-                    self.update_policy(batch, values, action_log_probs, dist)
+                    self.update_policy(batch, value_dict, action_log_probs, dist)
                 if epoch < self.critic_epoch and not self.actor_critic.critic_is_head:
-                    self.update_critic(values, batch)
+                    self.update_critic(value_dict, batch)
                 self.update_other(batch)
         rollouts.after_update()
         return self.get_losses_data()
@@ -103,23 +103,23 @@ class PPO(nn.Module):
             return (advantages - advantages.mean()) / (advantages.std() + EPS_PPO)
         return advantages
 
-    def update_policy(self, batch, values, action_log_probs, dist):
+    def update_policy(self, batch, value_dict, action_log_probs, dist):
         action_loss = self.action_loss(action_log_probs, batch)
         if self.actor_critic.critic_is_head:
-            value_loss = self.value_loss(batch, values)
+            value_loss = self.value_loss(batch, value_dict)
         else:
             value_loss = 0.0
         entropy_loss = self.entropy_loss(dist)
-        aux_loss = self.aux_loss(batch, values, action_log_probs, dist)
+        aux_loss = self.aux_loss(batch, value_dict, action_log_probs, dist)
 
         loss = 0.5 * value_loss + action_loss + aux_loss - entropy_loss
         self.update_weights(loss, ["actor"])
 
         self.advance_schedule(batch)
 
-    def update_critic(self, batch, values):
+    def update_critic(self, batch, value_dict):
         self.update_weights(
-            0.5 * self.value_loss(values, batch) * self.value_loss_coef, ["critic"]
+            0.5 * self.value_loss(value_dict, batch) * self.value_loss_coef, ["critic"]
         )
 
     def update_other(self, batch):
@@ -144,18 +144,24 @@ class PPO(nn.Module):
         self.losses_data["losses/a_loss"] += action_loss.item()
         return action_loss
 
-    def value_loss(self, batch, values):
-        key = self.actor_critic.critic.target_key
-        v_key = "value_preds" if key == "returns" else "value_terms_preds"
-        if self.use_clipped_value_loss:
-            value_pred_clipped = batch[v_key] + (values - batch[v_key]).clamp(
-                -self.clip_param, self.clip_param
-            )
-            value_losses = (values - batch[key]).pow(2)
-            value_losses_clipped = (value_pred_clipped - batch[key]).pow(2)
-            value_loss = torch.max(value_losses, value_losses_clipped).mean()
+    def value_loss(self, batch, value_dict):
+        value_loss = []
+        for pred, label in self.actor_critic.critic.pred2label.items():
+            if self.use_clipped_value_loss:
+                value_pred_clipped = batch[pred] + (
+                    value_dict[pred] - batch[pred]
+                ).clamp(-self.clip_param, self.clip_param)
+                value_losses = (value_dict[pred] - batch[label]).pow(2)
+                value_losses_clipped = (value_pred_clipped - batch[label]).pow(2)
+                loss = torch.max(value_losses, value_losses_clipped).mean()
+            else:
+                loss = mse_loss(value_dict[pred], batch[label])
+            value_loss.append(loss)
+        if len(value_loss) > 1:
+            value_loss = torch.cat(value_loss, dim=1).mean()
         else:
-            value_loss = mse_loss(values, batch[key])
+            value_loss = value_loss[0]
+
         value_loss = value_loss * self.value_loss_coef
         self.losses_data["losses/c_loss"] += value_loss.item()
         return value_loss

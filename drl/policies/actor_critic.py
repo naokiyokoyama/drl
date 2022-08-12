@@ -47,16 +47,22 @@ class ActorCritic(nn.Module):
         )
 
     def act(self, observations, deterministic=False):
-        value, dist, other = self._process_observations(observations)
+        value_dict, dist, other = self._process_observations(observations)
         actions = dist.deterministic_sample() if deterministic else dist.sample()
         action_log_probs = dist.log_probs(actions)
+
+        other.update({k: v for k, v in value_dict.items() if k != "value_preds"})
+        v_key = "value_preds" if "value_preds" in value_dict else "value_terms_preds"
+        value = value_dict[v_key]
 
         return value, actions, action_log_probs, other
 
     def evaluate_actions(self, observations, action):
-        value, dist, _ = self._process_observations(observations, unnorm_value=False)
+        value_dict, dist, _ = self._process_observations(
+            observations, unnorm_value=False
+        )
         action_log_probs = dist.log_probs(action)
-        return value, action_log_probs, dist
+        return value_dict, action_log_probs, dist
 
     def get_value(
         self,
@@ -70,13 +76,13 @@ class ActorCritic(nn.Module):
             observations = self._norm_obs(observations)
         if self.critic_is_head and features is None:
             features = self.net(observations)
-        value = self.critic(
+        value_dict = self.critic(
             features if self.critic_is_head else observations,
             unnorm=unnorm_value,
         )
         if all_values:
-            return self._get_value_dict(value, observations, features)
-        return value
+            return self._get_value_dict(value_dict, observations, features)
+        return value_dict
 
     @property
     def is_recurrent(self):
@@ -150,17 +156,17 @@ class ActorCritic(nn.Module):
             other.update(self.head.get_other(self.features))
         return other
 
-    def _get_value_dict(self, value, observations, features):
-        values_dict = {}
-        val_key = "value_terms_preds" if value.shape[1] > 1 else "value_preds"
-        values_dict[val_key] = value
+    def _get_value_dict(self, value_dict, observations, features):
+        """Designed for compute_returns in rollouts.py. Returns a dict containing
+        value_preds and value_terms_preds. Will use predictions of main critic over
+        those of the head for better accuracy."""
+        values_dict_out = {}
         if self.head is not None:
-            other = self.head.get_other(
-                self.net(observations) if features is None else features
-            )
-            values_dict.update({k: v for k, v in other.items() if k not in values_dict})
-        if "value_preds" not in values_dict:
-            values_dict["value_preds"] = values_dict["value_terms_preds"].sum(
+            head_input = self.net(observations) if features is None else features
+            values_dict_out.update(self.head.get_other(head_input))
+        values_dict_out.update(value_dict)
+        if "value_preds" not in values_dict_out:
+            values_dict_out["value_preds"] = values_dict_out["value_terms_preds"].sum(
                 1, keepdims=True
             )
-        return values_dict
+        return values_dict_out
