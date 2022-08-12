@@ -55,6 +55,7 @@ RL:
     policy_epoch: 4
     critic_epoch: 12
     num_mini_batch: 2
+    action_coef: 1.0
     value_loss_coef: 2.0
     entropy_coef: 0.000
     truncate_grads: False

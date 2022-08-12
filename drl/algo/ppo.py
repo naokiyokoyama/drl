@@ -22,6 +22,7 @@ class PPO(nn.Module):
         policy_epoch,
         critic_epoch,
         num_mini_batch,
+        action_coef,
         value_loss_coef,
         entropy_coef,
         actor_lr,
@@ -43,6 +44,7 @@ class PPO(nn.Module):
         self.ppo_epoch = max(policy_epoch, self.critic_epoch)
         self.num_mini_batch = num_mini_batch
 
+        self.action_coef = action_coef
         self.value_loss_coef = value_loss_coef
         self.entropy_coef = entropy_coef
 
@@ -140,7 +142,7 @@ class PPO(nn.Module):
         ratio = torch.exp(action_log_probs - batch["action_log_probs"])
         clipped_ratio = ratio.clamp(1.0 - self.clip_param, 1.0 + self.clip_param)
         surr1, surr2 = batch["advantages"] * ratio, batch["advantages"] * clipped_ratio
-        action_loss = -torch.min(surr1.sum(1), surr2.sum(1)).mean()
+        action_loss = -torch.min(surr1.sum(1), surr2.sum(1)).mean() * self.action_coef
         self.losses_data["losses/a_loss"] += action_loss.item()
         return action_loss
 
@@ -197,6 +199,7 @@ class PPO(nn.Module):
             policy_epoch=config.RL.PPO.policy_epoch,
             critic_epoch=config.RL.PPO.critic_epoch,
             num_mini_batch=config.RL.PPO.num_mini_batch,
+            action_coef=config.RL.PPO.action_coef,
             value_loss_coef=config.RL.PPO.value_loss_coef,
             entropy_coef=config.RL.PPO.entropy_coef,
             actor_lr=config.RL.PPO.actor_lr,
