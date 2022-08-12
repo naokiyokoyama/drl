@@ -158,7 +158,7 @@ class PPO(nn.Module):
                 loss = mse_loss(value_dict[pred], batch[label])
             value_loss.append(loss)
         if len(value_loss) > 1:
-            value_loss = torch.cat(value_loss, dim=1).mean()
+            value_loss = torch.stack(value_loss).mean()
         else:
             value_loss = value_loss[0]
 

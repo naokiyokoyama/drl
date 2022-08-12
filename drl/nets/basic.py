@@ -94,9 +94,6 @@ PRED2LABEL = {
 
 @drl_registry.register_nn_base
 class MLPCritic(MLPBase):
-    pred2label = {"value_preds": "returns"}
-    pred_key = "value_preds"
-
     def __init__(
         self,
         input_shape,
@@ -119,6 +116,7 @@ class MLPCritic(MLPBase):
         self.value_normalizer = None
         self.value_terms_normalizer = None
         self._setup_normalizers(normalize_value)
+        self.pred2label = {k: v for k, v in PRED2LABEL.items() if k in output_types}
 
     def forward(self, x, unnorm: bool = True):
         x = super().forward(x)
