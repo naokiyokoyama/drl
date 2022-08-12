@@ -173,3 +173,25 @@ class MLPCritic(MLPBase):
             elif out_type == "value_terms_preds":
                 self.value_terms_normalizer = RunningMeanStd((section_size,))
                 self.normalizer_map[out_type] = self.value_terms_normalizer
+
+
+@drl_registry.register_nn_base
+class MLPCriticQ(MLPCritic):
+    @classmethod
+    def from_config(  # noqa
+        cls,
+        config,
+        nn_config,
+        input_space: Union[Tuple, gym.Space],
+        action_space: gym.Space,
+        *args,
+        **kwargs
+    ):
+        assert "num_reward_terms" in config
+        assert not isinstance(input_space, tuple)
+        return super().from_config(
+            config=config,
+            nn_config=nn_config,
+            input_space=(input_space.shape[0] + action_space.shape[0],),
+            **kwargs,
+        )

@@ -37,7 +37,7 @@ ACTOR_CRITIC:
     activation: "elu"
     normalize_value: True
   q_critic:
-    name: "MLPCritic"
+    name: "MLPCriticQ"
     hidden_sizes: [128, 64]
     is_head: False
     activation: "elu"

@@ -40,7 +40,8 @@ class EPPO(PPO):
                 batch["observations"], batch["actions"]
             )
             state_action = torch.cat([batch["observations"], action], dim=1)
-            adv_pred = self.actor_critic.q_critic(state_action)
+            adv_pred_dict = self.actor_critic.q_critic(state_action)
+            adv_pred = torch.cat(list(adv_pred_dict.values()), dim=1)
             if adv_pred.shape[1] > 1:
                 adv_pred = adv_pred.sum(1, keepdims=True)
             obj = -adv_pred
@@ -72,12 +73,20 @@ class EPPO(PPO):
         if "q_critic" not in self.optimizers:
             return
         state_action = torch.cat([batch["observations"], batch["actions"]], dim=1)
-        adv_pred = self.actor_critic.q_critic(state_action)
-        if adv_pred.shape[1] == 1:
-            r_key, v_key = "returns", "value_preds"
+        adv_pred_dict = self.actor_critic.q_critic(state_action)
+        q_loss = []
+        for k, v in adv_pred_dict.items():
+            if k == "adv_preds":
+                r_key, v_key = "returns", "value_preds"
+            elif k == "adv_terms_preds":
+                r_key, v_key = "return_terms", "value_terms_preds"
+            else:
+                raise NotImplementedError
+            q_loss.append(mse_loss(v, batch[r_key] - batch[v_key]))
+        if len(q_loss) > 1:
+            q_loss = torch.stack(q_loss).mean()
         else:
-            r_key, v_key = "return_terms", "value_terms_preds"
-        q_loss = mse_loss(adv_pred, batch[r_key] - batch[v_key])
+            q_loss = q_loss[0]
         self.update_weights(q_loss, "q_critic")
 
     @classmethod
