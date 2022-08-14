@@ -33,13 +33,14 @@ class ActorCriticQ(ActorCritic):
 
     def reparameterize_action(self, observations, actions):
         # Don't update the normalizer stats when this method is used
-        prev_state = self.obs_normalizer.training
-        self.obs_normalizer.training = False
-
-        features = self.net(self._norm_obs(observations))
+        if self.obs_normalizer is not None:
+            prev_state = self.obs_normalizer.training
+            self.obs_normalizer.training = False
+            features = self.net(self._norm_obs(observations))
+            self.obs_normalizer.training = prev_state
+        else:
+            features = self.net(self._norm_obs(observations))
         dist = self.action_distribution(features)
-
-        self.obs_normalizer.training = prev_state
 
         eps = (actions - dist.mu) / dist.sigma
         reparam_action = dist.mu + dist.sigma * eps.detach()
