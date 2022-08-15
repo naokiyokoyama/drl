@@ -49,6 +49,13 @@ def get_num_reward_terms(envs, num_envs):
     num_reward_terms = infos["reward_terms"].shape[1]
     return num_reward_terms
 
+
+def reparameterize_action(mu, sigma, actions):
+    eps = (actions - mu) / sigma
+    reparam_action = mu + sigma * eps.detach()
+    return reparam_action
+
+
 class MeanReturns:
     def __init__(self, window_size=50):
         self.window_size = window_size
