@@ -43,7 +43,8 @@ class ActorQCritic(ActorCritic):
         observations, action = batch["observations"], batch["actions"]
         observations = self._norm_obs(observations)
         self.features = features = self.net(observations)
-        mu, _ = torch.chunk(batch["mu_sigma"], 2, dim=1)
+        # mu, _ = torch.chunk(batch["mu_sigma"], 2, dim=1)
+        mu = action
         value_dict = self.get_value(
             observations, features, unnorm_value=False, norm_obs=False, action=mu
         )
