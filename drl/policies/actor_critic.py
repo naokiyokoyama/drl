@@ -59,7 +59,7 @@ class ActorCritic(nn.Module):
         return value, actions, action_log_probs, other
 
     def evaluate_actions(self, batch: TensorDict):
-        observations, action = batch["observations"], batch["action"]
+        observations, action = batch["observations"], batch["actions"]
         value_dict, dist, _ = self._process_observations(
             observations, unnorm_value=False
         )
