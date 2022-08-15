@@ -36,6 +36,7 @@ ACTOR_CRITIC:
     is_head: True
     activation: "elu"
     normalize_value: True
+    output_types: ["value_preds"]
   q_critic:
     name: "MLPQCritic"
     hidden_sizes: [256, 128, 64]

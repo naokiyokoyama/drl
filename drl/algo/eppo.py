@@ -48,11 +48,19 @@ class EPPO(PPO):
             mask = self.cherry_pick(action_log_probs, batch)
             aux_loss = (mask * obj).mean() * self.aux_coeff
             self.losses_data["losses/aux_loss"] += aux_loss.item()
-            return aux_loss
+            return aux_loss * self.aux_coeff
 
         if self.actor_critic.head is not None:
-            head_pred = self.actor_critic.head(self.actor_critic.features, unnorm=False)
-            aux_loss = mse_loss(head_pred, batch[self.actor_critic.head.target_key])
+            aux_dict = self.actor_critic.head(
+                self.actor_critic.features.detach(), unnorm=False
+            )
+            aux_loss = []
+            for pred, label in self.actor_critic.head.pred2label.items():
+                aux_loss.append(mse_loss(aux_dict[pred], batch[label]))
+            if len(aux_loss) > 1:
+                aux_loss = torch.stack(aux_loss).mean()
+            else:
+                aux_loss = aux_loss[0]
             self.losses_data["losses/aux_loss"] += aux_loss.item()
             return aux_loss * self.aux_coeff
 
@@ -87,7 +95,7 @@ class EPPO(PPO):
             q_loss = torch.stack(q_loss).mean()
         else:
             q_loss = q_loss[0]
-        self.update_weights(q_loss, "q_critic")
+        self.update_weights(q_loss, ["q_critic"])
 
     @classmethod
     def from_config(cls, config, actor_critic, **kwargs):

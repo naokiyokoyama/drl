@@ -57,6 +57,8 @@ class PPO(nn.Module):
         self.optimizers = self.setup_optimizer(eps)
         self.losses_data = defaultdict(float)
 
+        self.num_updates = 0
+
     def setup_optimizer(self, eps: float):
         # Only one optimizer is needed if critic is part of policy
         if self.actor_critic.critic_is_head:
@@ -95,6 +97,7 @@ class PPO(nn.Module):
                     self.update_critic(value_dict, batch)
                 self.update_other(batch)
         rollouts.after_update()
+        self.num_updates += 1
         return self.get_losses_data()
 
     def get_advantages(self, rollouts: RolloutStorage) -> Tensor:
@@ -127,7 +130,7 @@ class PPO(nn.Module):
     def update_other(self, batch):
         pass
 
-    def update_weights(self, loss, opt_keys):
+    def update_weights(self, loss, opt_keys: Union[list, tuple]):
         for name, opt in self.optimizers.items():
             if name in opt_keys:
                 opt.zero_grad()
