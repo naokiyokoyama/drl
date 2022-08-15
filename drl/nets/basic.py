@@ -176,7 +176,7 @@ class MLPCritic(MLPBase):
 
 
 @drl_registry.register_nn_base
-class MLPCriticQ(MLPCritic):
+class MLPQCritic(MLPCritic):
     @classmethod
     def from_config(  # noqa
         cls,
@@ -187,7 +187,6 @@ class MLPCriticQ(MLPCritic):
         *args,
         **kwargs
     ):
-        assert "num_reward_terms" in config
         assert not isinstance(input_space, tuple)
         return super().from_config(
             config=config,

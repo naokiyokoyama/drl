@@ -87,7 +87,7 @@ class PPO(nn.Module):
         for epoch in range(self.ppo_epoch):
             for batch in generator(advantages, self.num_mini_batch):
                 value_dict, action_log_probs, dist = self.actor_critic.evaluate_actions(
-                    batch["observations"], batch["actions"]
+                    batch
                 )
                 if epoch < self.policy_epoch:
                     self.update_policy(batch, value_dict, action_log_probs, dist)

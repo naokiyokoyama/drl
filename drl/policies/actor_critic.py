@@ -1,6 +1,7 @@
 from typing import Optional
 
 import torch
+from drl.utils.tensor_dict import TensorDict
 from torch import nn as nn
 
 from drl.nets.basic import NNBase
@@ -57,7 +58,8 @@ class ActorCritic(nn.Module):
 
         return value, actions, action_log_probs, other
 
-    def evaluate_actions(self, observations, action):
+    def evaluate_actions(self, batch: TensorDict):
+        observations, action = batch["observations"], batch["action"]
         value_dict, dist, _ = self._process_observations(
             observations, unnorm_value=False
         )
