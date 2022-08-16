@@ -5,10 +5,10 @@ Similar to PPO, but with the following differences:
 
 """
 import torch
+from torch.optim import Adam
 
 from drl.algo.ppo import PPO
 from drl.utils.common import mse_loss
-from torch.optim import Adam
 
 
 class EPPO(PPO):

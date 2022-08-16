@@ -129,6 +129,9 @@ class MLPCritic(MLPBase):
                 out[key] = value
         return out
 
+    def get_other(self, features):
+        return self.forward(features)
+
     @classmethod
     def from_config(
         cls, config, nn_config, input_space: Union[Tuple, gym.Space], *args, **kwargs
