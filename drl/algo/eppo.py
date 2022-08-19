@@ -56,6 +56,17 @@ class EPPO(PPO):
             )
             aux_loss = []
             for pred, label in self.actor_critic.head.pred2label.items():
+                if label == "advantage_terms":
+                    batch["advantage_terms"] = (
+                        batch["return_terms"] - batch["value_terms_preds"]
+                    )
+                elif label == "advantages":
+                    aux_loss.append(
+                        mse_loss(
+                            aux_dict[pred], batch["returns"] - batch["value_preds"]
+                        )
+                    )
+                    continue
                 aux_loss.append(mse_loss(aux_dict[pred], batch[label]))
             if len(aux_loss) > 1:
                 aux_loss = torch.stack(aux_loss).mean()
