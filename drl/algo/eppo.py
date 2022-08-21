@@ -121,7 +121,8 @@ class EPPO(PPO):
             value_loss = torch.max(value_losses, value_losses_clipped).mean()
         else:
             value_loss = mse_loss(
-                value_dict["value_terms_preds"].sum(1, keepdims=True), batch["returns"]
+                value_dict["value_terms_preds"].sum(1, keepdims=True),
+                batch["return_terms"].sum(1, keepdims=True),
             )
 
         terms_loss = (
