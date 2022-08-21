@@ -108,6 +108,31 @@ class EPPO(PPO):
             q_loss = q_loss[0]
         self.update_weights(q_loss, ["q_critic"])
 
+    def value_loss(self, batch, value_dict):
+        if self.use_clipped_value_loss:
+            value_pred_clipped = batch["value_preds"] + (
+                value_dict["value_terms_preds"].sum(1, keepdims=True)
+                - batch["value_preds"]
+            ).clamp(-self.clip_param, self.clip_param)
+            value_losses = (
+                value_dict["value_terms_preds"].sum(1, keepdims=True) - batch["returns"]
+            ).pow(2)
+            value_losses_clipped = (value_pred_clipped - batch["returns"]).pow(2)
+            value_loss = torch.max(value_losses, value_losses_clipped).mean()
+        else:
+            value_loss = mse_loss(
+                value_dict["value_terms_preds"].sum(1, keepdims=True), batch["returns"]
+            )
+
+        terms_loss = (
+            mse_loss(value_dict["value_terms_preds"], batch["return_terms"])
+            * self.value_loss_coef
+        )
+
+        value_loss = value_loss * 2.0 + terms_loss
+        self.losses_data["losses/c_loss"] += value_loss.item()
+        return value_loss
+
     @classmethod
     def from_config(cls, config, actor_critic, **kwargs):
         return super().from_config(
