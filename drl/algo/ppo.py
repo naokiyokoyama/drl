@@ -124,7 +124,7 @@ class PPO(nn.Module):
 
     def update_critic(self, batch, value_dict):
         self.update_weights(
-            0.5 * self.value_loss(value_dict, batch) * self.value_loss_coef, ["critic"]
+            0.5 * self.value_loss(value_dict, batch), ["critic"]
         )
 
     def update_other(self, batch):
